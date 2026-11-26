@@ -1,0 +1,1 @@
+import{d as o}from"./factory-c579bfc8.js";import{d as t}from"./transforms-converters-f6a13ab5.js";import"./he-7949c6f5.js";import"./index-64fd2018.js";import"./_commonjsHelpers-de833af9.js";const d=o("data-size",t);export{d as default};
