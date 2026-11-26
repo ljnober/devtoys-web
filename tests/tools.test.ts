@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import type { ToolResult } from '../src/tools/contracts.ts'
+import { getTtsModel, ttsModels } from '../src/data/ttsModels.ts'
 import {
   categories,
   tools,
@@ -92,9 +93,9 @@ describe('注册表结构与契约', () => {
     }
   })
 
-  test('tools 恰为 40 个且 state 全为 ready', () => {
-    assert.equal(tools.length, 40)
-    assert.ok(tools.every(tool => tool.state === 'ready'), '40 个工具必须全部 ready')
+  test('tools 恰为 41 个且 state 全为 ready', () => {
+    assert.equal(tools.length, 41)
+    assert.ok(tools.every(tool => tool.state === 'ready'), '41 个工具必须全部 ready')
   })
 
   test('comingSoonTools 恰为 2 个且 state 全为 coming-soon', () => {
@@ -104,10 +105,10 @@ describe('注册表结构与契约', () => {
       ['math-expression', 'percentage-calculator'])
   })
 
-  test('40 个工具 id 全局唯一（含 2 个占位共 42 个不重复），且为 kebab-case', () => {
+  test('41 个工具 id 全局唯一（含 2 个占位共 43 个不重复），且为 kebab-case', () => {
     const allIds = [...tools, ...comingSoonTools].map(tool => tool.id)
     assert.equal(new Set(allIds).size, allIds.length, 'id 必须全局唯一')
-    assert.equal(new Set(tools.map(tool => tool.id)).size, 40)
+    assert.equal(new Set(tools.map(tool => tool.id)).size, 41)
     for (const id of allIds) {
       assert.match(id, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, `${id} 应为 kebab-case`)
     }
@@ -188,11 +189,40 @@ describe('注册表结构与契约', () => {
     assert.equal(getTool('math-expression')?.state, 'coming-soon', 'getTool 应覆盖占位工具')
     assert.equal(getTool('不存在'), undefined)
     assert.equal(getToolsByCategory('converters').length, 5)
+    assert.equal(getToolsByCategory('generators').length, 6)
     assert.equal(getToolsByCategory('calculators').length, 0, 'calculators 无 ready 工具')
-    assert.equal(searchTools('').length, 40, '空关键词返回全部工具副本')
+    assert.equal(getTool('text-to-speech')?.category, 'generators')
+    assert.equal(searchTools('').length, 41, '空关键词返回全部工具副本')
+    assert.ok(searchTools('声音克隆').some(tool => tool.id === 'text-to-speech'))
     assert.ok(searchTools('json').length >= 4, '中英文模糊搜索应命中多个工具')
     assert.ok(searchTools('进制').some(tool => tool.id === 'number-base'))
     assert.deepEqual(searchTools('一定不存在的关键词'), [])
+  })
+})
+
+// ——— 1b. 语音模型配置（多模型选择组件的单一配置源）———
+
+describe('ttsModels：语音模型配置', () => {
+  test('包含 3 个模型且 id 全局唯一', () => {
+    assert.equal(ttsModels.length, 3)
+    assert.equal(new Set(ttsModels.map(model => model.id)).size, 3)
+  })
+
+  test('每个模型都有选择组件所需的展示与推理字段', () => {
+    for (const model of ttsModels) {
+      assert.ok(model.name.length > 0, `${model.id} 需有名称`)
+      assert.ok(model.description.length > 0, `${model.id} 需有描述`)
+      assert.ok(model.sizeLabel.length > 0, `${model.id} 需有体积标签`)
+      assert.ok(model.repoId.includes('/'), `${model.id} 需有 HF 仓库 id`)
+      assert.ok(model.onnxFile.endsWith('.onnx'), `${model.id} 需有 ONNX 文件名`)
+      assert.equal(typeof model.supportsCloning, 'boolean')
+    }
+  })
+
+  test('getTtsModel 按 id 返回模型，未知 id 返回 undefined', () => {
+    assert.equal(getTtsModel('zs-v1')?.supportsCloning, true)
+    assert.equal(getTtsModel('css10')?.supportsCloning, false)
+    assert.equal(getTtsModel('不存在'), undefined)
   })
 })
 

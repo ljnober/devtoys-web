@@ -1,4 +1,4 @@
-// 工具注册表：11 个分类 + 40 个 P0 工具 + 2 个即将推出占位（契约见 contracts.ts）。
+// 工具注册表：11 个分类 + 41 个 P0 工具 + 2 个即将推出占位（契约见 contracts.ts）。
 import type { CategoryDefinition, ToolCategoryId, ToolDefinition } from './contracts'
 
 /** 11 个分类，顺序固定为 1..11。 */
@@ -27,7 +27,7 @@ export const categories: CategoryDefinition[] = [
     description: '数学表达式与百分比计算（即将推出）' }
 ]
 
-/** 40 个 P0 工具，state 全部为 ready，id 全局唯一。 */
+/** 41 个 P0 工具，state 全部为 ready，id 全局唯一。 */
 export const tools: ToolDefinition[] = [
   {
     id: 'json-yaml',
@@ -392,6 +392,22 @@ export const tools: ToolDefinition[] = [
       { key: 'min', label: '最小值', type: 'number', defaultValue: 0 },
       { key: 'max', label: '最大值', type: 'number', defaultValue: 100 },
       { key: 'integer', label: '仅整数', type: 'switch', defaultValue: true }
+    ],
+    source: 'new',
+    state: 'ready'
+  },
+  {
+    id: 'text-to-speech',
+    category: 'generators',
+    name: '文字转语音',
+    description: '系统音色朗读，或用上传音频在本地生成克隆角色',
+    icon: '🎙️',
+    keywords: ['文字转语音', '语音合成', '配音', '声音克隆', 'tts'],
+    componentPath: 'generators/TextToSpeech',
+    kind: 'custom',
+    options: [
+      { key: 'rate', label: '语速', type: 'number', defaultValue: 1 },
+      { key: 'pitch', label: '音调', type: 'number', defaultValue: 1 }
     ],
     source: 'new',
     state: 'ready'

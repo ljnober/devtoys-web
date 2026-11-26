@@ -62,7 +62,7 @@ export interface ToolOption {
 
 // 注册表对外 API（签名冻结，实现位于 registry.ts / loader.ts / factory.ts）
 export declare const categories: CategoryDefinition[]          // 长度 11
-export declare const tools: ToolDefinition[]                    // 长度 40，state 全为 ready
+export declare const tools: ToolDefinition[]                    // 长度 41，state 全为 ready
 export declare const comingSoonTools: ToolDefinition[]          // 长度 2
 export declare function getTool(id: string): ToolDefinition | undefined
 export declare function getToolsByCategory(id: ToolCategoryId): ToolDefinition[]

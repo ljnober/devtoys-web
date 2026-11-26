@@ -7,7 +7,7 @@
  * 实现要点：
  *   1. 用 Node 内置 http 模块托管 dist/（本地静态服务，无外部网络依赖）；
  *   2. 以 Edge/Chrome headless + CDP（Node 内置 WebSocket / fetch）驱动真实浏览器；
- *   3. 覆盖 40 条工具路由、首页目录/搜索、10 项关键交互、操作栏、隐私红线、
+ *   3. 覆盖 41 条工具路由、首页目录/搜索、10 项关键交互、操作栏、隐私红线、
  *      响应式/主题、深链刷新与无效 id 兜底；
  *   4. 全程监听 Network.requestWillBeSent / Runtime.exceptionThrown。
  *
@@ -50,7 +50,7 @@ function expect(condition, name, detail = '') {
 }
 
 // ---------------------------------------------------------------------------
-// 从注册表读取 40 个工具（避免测试与源码清单漂移）
+// 从注册表读取 41 个工具（避免测试与源码清单漂移）
 // ---------------------------------------------------------------------------
 function readToolRegistry() {
   const source = fs.readFileSync(REGISTRY, 'utf8')
@@ -394,12 +394,12 @@ async function toolUiInfo() {
 }
 
 // ---------------------------------------------------------------------------
-// 场景 1：40 条工具路由逐个打开
+// 场景 1：41 条工具路由逐个打开
 // ---------------------------------------------------------------------------
 async function scenarioRoutes(tools) {
-  group('场景 1 · 40 条工具路由逐个打开')
-  expect(tools.length === 40, '注册表解析出 40 个工具', `实际 ${tools.length}`)
-  expect(new Set(tools.map((tool) => tool.id)).size === 40, '40 个 id 全局唯一')
+  group('场景 1 · 41 条工具路由逐个打开')
+  expect(tools.length === 41, '注册表解析出 41 个工具', `实际 ${tools.length}`)
+  expect(new Set(tools.map((tool) => tool.id)).size === 41, '41 个 id 全局唯一')
 
   const routeRows = []
   let passed = 0
@@ -430,7 +430,7 @@ async function scenarioRoutes(tools) {
       passed += 1
     }
   }
-  record(`40 条路由全部渲染成功（${passed}/${tools.length}）`, passed === tools.length,
+  record(`41 条路由全部渲染成功（${passed}/${tools.length}）`, passed === tools.length,
     passed === tools.length ? '全部通过' : routeRows.filter((row) => !row.pass).map((row) => row.id).join(', '))
   return routeRows
 }
@@ -452,8 +452,8 @@ async function scenarioHome() {
     privacy: (document.body.innerText || '').includes('不上传')
   }))()`)
   expect(counts.categories === 11, '首页 11 个分类分区', `实际 ${counts.categories}`)
-  expect(counts.cards === 42 && counts.ready === 40 && counts.soon === 2,
-    '首页 40 ready 卡 + 2 coming-soon 占位', JSON.stringify(counts))
+  expect(counts.cards === 43 && counts.ready === 41 && counts.soon === 2,
+    '首页 41 ready 卡 + 2 coming-soon 占位', JSON.stringify(counts))
   expect(counts.privacy, '首页隐私标识常驻（不上传）')
 
   // 搜索框已按新版导航设计下沉到左侧常驻侧栏（AppSidebar），与首页共用 search store。
@@ -468,7 +468,7 @@ async function scenarioHome() {
   expect(search2.includes('Base64'), '搜索「base64」过滤到 Base64 工具', search2)
 
   await click('.dt-side__clear')
-  await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 40`, '清除搜索恢复 40 卡', 4000)
+  await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 41`, '清除搜索恢复 41 卡', 4000)
   await click('a.dt-tool-card', 12)
   await waitFor(`location.hash.includes('#/tool/')`, '点击卡片进入工具页', 4000)
   const href = await evaluate(`location.hash`)

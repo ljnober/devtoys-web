@@ -17,7 +17,7 @@ export const useSearchStore = defineStore('search', () => {
   /** 中文/英文搜索词，由 AppHeader 的输入框双向绑定。 */
   const keyword = ref('')
 
-  /** 40 个 P0 工具的搜索结果。 */
+  /** 41 个 P0 工具的搜索结果。 */
   const results = computed<ToolDefinition[]>(() => searchTools(keyword.value))
 
   /** 即将推出占位卡的搜索结果（不计入 P0 数量）。 */
