@@ -27,4 +27,33 @@ Vue 3 + TypeScript + Vite + Element Plus + Pinia + vue-router。产物使用相�
 
 ## 部署
 
-部署工作流与自定义域名（`tool.nober.cn`）说明将在后续任务中补充。
+仓库为公开仓库，托管在 GitHub Pages，线上地址：<https://tool.nober.cn/>
+
+部署流程已自动化：
+
+1. 推送 `main` 分支后，`.github/workflows/deploy.yml` 会执行类型检查、构建与「无外链 CDN」校验。
+2. 校验通过后，`peaceiris/actions-gh-pages@v4` 把 `dist/` 发布到 `gh-pages` 分支。
+3. `public/CNAME` 内容为 `tool.nober.cn`，因此 `dist/` 与 `gh-pages` 分支根目录都带有正确的 CNAME 文件。
+4. 仓库 Settings → Pages 的 Source 选择 `Deploy from a branch`，Branch 选择 `gh-pages` / `/(root)`。
+
+### 自定义域名 DNS 配置
+
+在 `nober.cn` 的 DNS 服务商处添加一条记录：
+
+| 类型 | 主机记录 | 记录值 |
+| --- | --- | --- |
+| CNAME | `tool` | `ljnober.github.io` |
+
+等待 DNS 生效后，在仓库 Settings → Pages 中确认 Custom domain 为 `tool.nober.cn`，并勾选 `Enforce HTTPS`。GitHub 会自动为该域名签发 HTTPS 证书。
+
+> 注意：由于项目已绑定自定义域名，访问 `https://ljnober.github.io/devtoys-web/` 会跳转到 `tool.nober.cn`。DNS 未生效前该跳转会显示 502，属正常现象。
+
+### 测试
+
+```bash
+npm test                 # 纯函数与注册表单测（95 条）
+node tests/e2e-smoke.mjs # 浏览器端到端冒烟（需先 npm run build）
+node tests/audit.mjs     # 静态与部署配置审计
+```
+
+详细的需求、架构与测试报告见 `docs/` 目录。
