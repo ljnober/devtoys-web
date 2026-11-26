@@ -379,11 +379,11 @@ async function openTool(id, name) {
     12000
   )
   // 标题来自外层 shell，可能早于 defineAsyncComponent 的 chunk 挂载；
-  // 必须等工具自有控件出现后再操作，避免把值写进将被替换的旧 DOM。
+  // 操作栏按钮/选项栏先于工具主体出现，必须等「工具自有」输入控件挂载后再操作。
   await waitFor(
-    `document.querySelectorAll('.dt-tool-shell__main input, .dt-tool-shell__main textarea, .dt-tool-shell__main select, .dt-tool-shell__main button').length > 0`,
-    `工具控件挂载 ${id}`,
-    12000
+    `[...document.querySelectorAll('.dt-tool-shell__main input, .dt-tool-shell__main textarea, .dt-tool-shell__main select')].some((el) => !el.closest('.dt-options') && !el.closest('.dt-actions'))`,
+    `工具主体控件挂载 ${id}`,
+    15000
   )
   await delay(260)
 }
@@ -484,8 +484,9 @@ async function scenarioSiteReachability() {
   expect(page.href === `${BASE_URL}/#/` || page.href === `${BASE_URL}/`, '最终 URL 正确', page.href)
   expect(page.title.includes('DevToys Web'), '页面标题正确', page.title)
   expect(page.lang === 'zh-CN', 'html lang=zh-CN', page.lang)
-  expect(page.text.includes('开发者工具箱') && page.text.includes('不上传'),
-    '中文文案正常（开发者工具箱 / 不上传）', page.text.slice(0, 90).replace(/\n/g, '|'))
+  // 新版 header 文案改为「免费的 Web 开发者工具」，「开发者工具箱」仍在页面 title 中。
+  expect(page.title.includes('开发者工具箱') && page.text.includes('所有工具') && page.text.includes('不上传'),
+    '中文文案正常（开发者工具箱 / 所有工具 / 不上传）', page.text.slice(0, 90).replace(/\n/g, '|'))
   expect(!page.text.includes('\ufffd') && !/æ|Â|â€/.test(page.text), '页面无乱码/替换字符', '')
 
   const counts = await evaluate(`(() => ({
@@ -554,17 +555,18 @@ async function scenarioHome() {
   await waitFor(`document.querySelectorAll('.dt-category').length === 11`, '首页 11 个分类', 10000)
   await delay(150)
 
-  await setField('.dt-header__search input', '时间戳')
+  // 搜索框已随新版导航下沉到左侧常驻侧栏，header 中不再存在。
+  await setField('.dt-side__search input', '时间戳')
   await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 1`, '中文搜索「时间戳」', 6000)
   const search1 = await evaluate(`document.querySelector('a.dt-tool-card strong')?.textContent || ''`)
   expect(search1.includes('日期时间转换器'), '搜索「时间戳」过滤到日期时间转换器', search1)
 
-  await setField('.dt-header__search input', 'base64')
+  await setField('.dt-side__search input', 'base64')
   await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 1`, '搜索「base64」', 6000)
   const search2 = await evaluate(`document.querySelector('a.dt-tool-card strong')?.textContent || ''`)
   expect(search2.includes('Base64'), '搜索「base64」过滤到 Base64 工具', search2)
 
-  await click('.dt-header__clear')
+  await click('.dt-side__clear')
   await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 40`, '清除搜索恢复 40 卡', 6000)
   await click('a.dt-tool-card', 12)
   await waitFor(`location.hash.includes('#/tool/')`, '点击卡片进入工具页', 6000)
@@ -881,22 +883,25 @@ async function scenarioResponsiveAndTheme() {
     expect(home.scrollWidth <= home.innerWidth + 1, `${label} 首页无横向溢出`, JSON.stringify(home))
 
     await openTool('json-format', 'JSON 格式化/压缩/校验')
+    // 新版：分类导航上移到全局 AppSidebar，工具页内不再有内嵌 aside。
     const tool = await evaluate(`(() => {
-      const shell = document.querySelector('.dt-tool-shell');
-      const aside = document.querySelector('.dt-tool-shell__aside');
-      const columns = shell ? getComputedStyle(shell).gridTemplateColumns.trim().split(/\\s+/).length : 0;
+      const sidebar = document.querySelector('.dt-app__sidebar');
+      const menu = document.querySelector('.dt-header__menu');
       return {
         scrollWidth: document.documentElement.scrollWidth,
         innerWidth: window.innerWidth,
-        columns,
-        asideDisplay: aside ? getComputedStyle(aside).display : 'missing'
+        sidebarDisplay: sidebar ? getComputedStyle(sidebar).display : 'missing',
+        sidebarWidth: sidebar ? Math.round(sidebar.getBoundingClientRect().width) : 0,
+        menuDisplay: menu ? getComputedStyle(menu).display : 'missing'
       };
     })()`)
     expect(tool.scrollWidth <= tool.innerWidth + 1, `${label} 工具页无横向溢出`, JSON.stringify(tool))
     if (mobile) {
-      expect(tool.columns === 1 && tool.asideDisplay === 'none', `${label} 工具页移动端单栏`, JSON.stringify(tool))
+      expect(tool.sidebarDisplay === 'none' && tool.menuDisplay !== 'none',
+        `${label} 工具页移动端隐藏侧栏并显示汉堡`, JSON.stringify(tool))
     } else {
-      expect(tool.columns >= 2 && tool.asideDisplay !== 'none', `${label} 工具页桌面双栏`, JSON.stringify(tool))
+      expect(tool.sidebarDisplay !== 'none' && tool.sidebarWidth >= 270 && tool.sidebarWidth <= 290,
+        `${label} 工具页桌面常驻 280px 侧栏`, JSON.stringify(tool))
     }
   }
 
@@ -923,6 +928,174 @@ async function scenarioResponsiveAndTheme() {
   }))()`)
   expect(afterReload.theme === 'dark' && afterReload.dark && afterReload.stored === 'dark',
     '刷新后 dark 主题保持', JSON.stringify(afterReload))
+
+  await client.send('Emulation.clearDeviceMetricsOverride')
+}
+
+// ---------------------------------------------------------------------------
+// 场景 6b：线上导航专项（280px 常驻侧栏 / 折叠 / 搜索 / 联动 / 抽屉）
+// ---------------------------------------------------------------------------
+async function scenarioNavigation() {
+  group('场景 6b · 线上导航专项（新侧栏）')
+
+  // ---- 桌面 1440×900 ----
+  await client.send('Emulation.setDeviceMetricsOverride', {
+    width: 1440, height: 900, deviceScaleFactor: 1, mobile: false
+  })
+  await delay(180)
+  await evaluate(`location.hash = '#/'`)
+  await waitFor(`document.querySelectorAll('.dt-category').length === 11`, '导航专项首页', 12000)
+  await delay(150)
+
+  const desktop = await evaluate(`(() => {
+    const side = document.querySelector('.dt-app__sidebar');
+    const rect = side?.getBoundingClientRect();
+    const groups = document.querySelectorAll('.dt-app__sidebar .dt-side__group');
+    return {
+      display: side ? getComputedStyle(side).display : 'missing',
+      width: rect ? Math.round(rect.width) : 0,
+      left: rect ? Math.round(rect.left) : -1,
+      categories: document.querySelectorAll('.dt-app__sidebar .dt-side__category').length,
+      chevrons: document.querySelectorAll('.dt-app__sidebar .dt-side__chevron').length,
+      quickLinks: groups[0]?.querySelectorAll('.dt-side__row').length ?? 0,
+      allTools: document.querySelectorAll('.dt-app__sidebar .dt-side__all').length,
+      searchInputs: document.querySelectorAll('.dt-app__sidebar .dt-side__search input').length
+    };
+  })()`)
+  expect(desktop.display !== 'none' && desktop.width >= 270 && desktop.width <= 290 && desktop.left === 0,
+    '桌面 1440px 侧栏常驻宽约 280px 且贴左', JSON.stringify(desktop))
+  expect(desktop.categories === 11 && desktop.chevrons === 11 && desktop.quickLinks === 3
+      && desktop.allTools === 1 && desktop.searchInputs === 1,
+    '侧栏含 11 分类 / 3 快捷入口 / 所有工具 / 搜索框', JSON.stringify(desktop))
+
+  const beforeExpand = await evaluate(`document.querySelectorAll('.dt-app__sidebar .dt-side__tools').length`)
+  const expanded = await click('.dt-app__sidebar .dt-side__category-toggle', 0)
+  await delay(150)
+  const afterExpand = await evaluate(`(() => ({
+    count: document.querySelectorAll('.dt-app__sidebar .dt-side__tools').length,
+    aria: document.querySelector('.dt-app__sidebar .dt-side__category-toggle')?.getAttribute('aria-expanded'),
+    links: document.querySelectorAll('.dt-app__sidebar .dt-side__tools a.dt-side__tool').length
+  }))()`)
+  expect(expanded.ok && afterExpand.count === beforeExpand + 1 && afterExpand.aria === 'true' && afterExpand.links > 0,
+    '点击分类标题展开工具列表', JSON.stringify(afterExpand))
+
+  await click('.dt-app__sidebar .dt-side__category-toggle', 0)
+  await delay(150)
+  const afterCollapse = await evaluate(`(() => ({
+    count: document.querySelectorAll('.dt-app__sidebar .dt-side__tools').length,
+    aria: document.querySelector('.dt-app__sidebar .dt-side__category-toggle')?.getAttribute('aria-expanded')
+  }))()`)
+  expect(afterCollapse.count === beforeExpand && afterCollapse.aria === 'false',
+    '再次点击分类标题折叠工具列表', JSON.stringify(afterCollapse))
+
+  await click('.dt-app__sidebar .dt-side__category-toggle', 0)
+  await delay(120)
+  const linkInfo = await evaluate(`(() => {
+    const a = document.querySelector('.dt-app__sidebar .dt-side__tools a.dt-side__tool');
+    return a ? { text: a.textContent.trim(), href: a.getAttribute('href') || '' } : null;
+  })()`)
+  await click('.dt-app__sidebar .dt-side__tools a.dt-side__tool', 0)
+  await waitFor(`location.hash.startsWith('#/tool/') && !!document.querySelector('.dt-tool-shell__title')`,
+    '侧栏工具链接跳转', 8000)
+  await waitFor(
+    `document.querySelectorAll('.dt-tool-shell__main input, .dt-tool-shell__main textarea, .dt-tool-shell__main select, .dt-tool-shell__main button').length > 0`,
+    '侧栏跳转后工具控件挂载', 8000)
+  const landed = await evaluate(`({ hash: location.hash, title: document.querySelector('.dt-tool-shell__title')?.textContent.trim() || '' })`)
+  expect(!!linkInfo && landed.hash.startsWith('#/tool/') && landed.title.length > 2,
+    '侧栏工具链接跳转到 /#/tool/<id> 后真实渲染', `${JSON.stringify(linkInfo)} → ${JSON.stringify(landed)}`)
+
+  await openHash('#/tool/json-format')
+  await waitFor(`document.querySelector('.dt-tool-shell__title')?.textContent.includes('JSON') === true`,
+    '联动工具页标题', 10000)
+  await waitFor(`document.querySelectorAll('.dt-app__sidebar .dt-side__category-toggle[aria-expanded="true"]').length >= 1`,
+    '当前工具分类自动展开', 6000)
+  const linkage = await evaluate(`(() => {
+    const expandedBtns = [...document.querySelectorAll('.dt-app__sidebar .dt-side__category-toggle[aria-expanded="true"]')];
+    const current = document.querySelector('.dt-app__sidebar .dt-side__tool.is-current');
+    const activeTools = [...document.querySelectorAll('.dt-app__sidebar .dt-side__tool.is-current')];
+    const inExpanded = expandedBtns.some((btn) => {
+      const ul = btn.parentElement.querySelector('.dt-side__tools');
+      return ul && activeTools.some((a) => ul.contains(a));
+    });
+    return {
+      expandedNames: expandedBtns.map((b) => b.querySelector('.dt-side__category-name')?.textContent.trim()),
+      currentText: current?.textContent.trim() || '',
+      currentCount: activeTools.length,
+      ariaCurrent: current?.getAttribute('aria-current') || '',
+      inExpanded
+    };
+  })()`)
+  expect(linkage.expandedNames.length >= 1 && linkage.inExpanded,
+    '当前工具所属分类自动展开', JSON.stringify(linkage))
+  expect(linkage.currentCount >= 1 && linkage.currentText.includes('JSON') && linkage.ariaCurrent === 'page',
+    '当前工具高亮且 aria-current=page', JSON.stringify(linkage))
+
+  // ---- 搜索 42 → 1 → 42 ----
+  await evaluate(`location.hash = '#/'`)
+  await waitFor(`document.querySelectorAll('.dt-category').length === 11`, '搜索专项首页', 12000)
+  const cardsBefore = await evaluate(`document.querySelectorAll('.dt-tool-card').length`)
+  await setField('.dt-app__sidebar .dt-side__search input', 'base64')
+  await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 1`, '导航专项 base64 搜索', 8000)
+  const cardsAfter = await evaluate(`document.querySelectorAll('.dt-tool-card').length`)
+  expect(cardsBefore === 42 && cardsAfter === 1, '侧栏搜索 base64 后卡片 42 → 1',
+    `before=${cardsBefore} after=${cardsAfter}`)
+  await click('.dt-app__sidebar .dt-side__clear')
+  await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 40`, '导航专项清除搜索', 8000)
+  const cardsRestored = await evaluate(`document.querySelectorAll('.dt-tool-card').length`)
+  expect(cardsRestored === 42, '清除搜索后恢复 42 张卡片', `restored=${cardsRestored}`)
+
+  // ---- 375px 抽屉 ----
+  await client.send('Emulation.setDeviceMetricsOverride', {
+    width: 375, height: 812, deviceScaleFactor: 1, mobile: true
+  })
+  await delay(180)
+  await evaluate(`location.hash = '#/'`)
+  await waitFor(`document.querySelectorAll('.dt-category').length === 11`, '375px 导航首页', 12000)
+  const mobile = await evaluate(`(() => ({
+    sidebarDisplay: getComputedStyle(document.querySelector('.dt-app__sidebar')).display,
+    menuDisplay: getComputedStyle(document.querySelector('.dt-header__menu')).display,
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth
+  }))()`)
+  expect(mobile.sidebarDisplay === 'none' && mobile.menuDisplay !== 'none',
+    '375px 常驻侧栏隐藏且汉堡菜单可见', JSON.stringify(mobile))
+  expect(mobile.scrollWidth <= mobile.innerWidth, '375px 首页无横向溢出', JSON.stringify(mobile))
+
+  await click('.dt-header__menu')
+  await waitFor(`!!document.querySelector('.dt-drawer__panel')`, '抽屉打开', 6000)
+  const drawer = await evaluate(`(() => {
+    const panel = document.querySelector('.dt-drawer__panel');
+    const groups = panel?.querySelectorAll('.dt-side__group') ?? [];
+    return {
+      categories: panel?.querySelectorAll('.dt-side__category').length ?? 0,
+      chevrons: panel?.querySelectorAll('.dt-side__chevron').length ?? 0,
+      quickLinks: groups[0]?.querySelectorAll('.dt-side__row').length ?? 0,
+      search: !!panel?.querySelector('.dt-side__search input')
+    };
+  })()`)
+  expect(drawer.categories === 11 && drawer.chevrons === 11,
+    '汉堡抽屉含 11 个可折叠分类', JSON.stringify(drawer))
+  expect(drawer.quickLinks === 3 && drawer.search,
+    '汉堡抽屉含 3 个快捷入口与搜索框', JSON.stringify(drawer))
+
+  await click('.dt-drawer__close')
+  await waitFor(`!document.querySelector('.dt-drawer__panel')`, '抽屉关闭', 6000)
+  expect(true, '抽屉可正常关闭')
+
+  await openHash('#/tool/json-format')
+  await waitFor(`!!document.querySelector('.dt-tool-shell__title')`, '375px 工具页', 10000)
+  const toolViewport = await evaluate(`({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth
+  })`)
+  expect(toolViewport.scrollWidth <= toolViewport.innerWidth,
+    '375px 工具页无横向溢出', JSON.stringify(toolViewport))
+  await click('.dt-tool-shell__menu')
+  await waitFor(`!!document.querySelector('.dt-drawer__panel')`, '工具页抽屉打开', 6000)
+  const toolDrawerCats = await evaluate(`document.querySelectorAll('.dt-drawer__panel .dt-side__category').length`)
+  expect(toolDrawerCats === 11, '工具页汉堡可打开含 11 分类的抽屉', `categories=${toolDrawerCats}`)
+  await click('.dt-drawer__close')
+  await waitFor(`!document.querySelector('.dt-drawer__panel')`, '工具页抽屉关闭', 6000)
 
   await client.send('Emulation.clearDeviceMetricsOverride')
 }
@@ -1070,6 +1243,7 @@ async function main() {
   await scenarioActionBar(downloadDir)
   await scenarioPrivacy()
   await scenarioResponsiveAndTheme()
+  await scenarioNavigation()
   await scenarioDeepLinks()
   assertNoExternalRequests()
 
