@@ -1,0 +1,36 @@
+sequenceDiagram
+    actor U as 用户
+    participant B as 浏览器
+    participant H as HomeView
+    participant RG as registry.ts
+    participant R as vue-router
+    participant TV as ToolView(页面壳)
+    participant LD as loader.ts
+    participant TC as 工具组件(text/custom)
+    participant TR as transform()/本地算法
+    participant AB as ToolActionBar
+    participant UT as clipboard/download 工具
+
+    U->>B: 打开 https://tool.nober.cn/
+    B->>H: 加载首页
+    H->>RG: categories / getToolsByCategory()
+    RG-->>H: 11 分类 + 40 条 ToolDefinition
+    H-->>U: 渲染分类工具目录 + 🔒隐私横幅
+    U->>H: 中文搜索 / 点击工具卡片
+    H->>R: router.push('/tool/' + def.id)
+    R->>TV: 挂载 ToolView
+    TV->>RG: getTool(route.params.id)
+    RG-->>TV: ToolDefinition
+    TV->>LD: loadToolComponent(def)
+    LD-->>TV: defineAsyncComponent(对应 .vue)；缺失则 ComingSoon.vue
+    TV->>TV: 创建 ToolActions {copy,download,clear,swap}
+    TV->>TC: 挂载组件，传 props {toolId, actions}
+    U->>TC: 输入文本 / 上传文件 / 调整选项
+    TC->>TR: 本地计算 transform(input, options)
+    TR-->>TC: ToolResult (text 或 blob)
+    TC->>TV: emit('output-change', result)
+    TV-->>U: 输出面板实时渲染 + 状态标签
+    U->>AB: 点击「复制」或「下载」
+    AB->>UT: actions.copy(result.text) / actions.download(result, filename)
+    UT-->>U: 写入剪贴板 / 触发浏览器下载
+    Note over TR,UT: 全流程仅浏览器本地计算，零 fetch / XHR / 分析上报

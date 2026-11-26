@@ -1,0 +1,105 @@
+classDiagram
+    class ToolDefinition {
+      +string id
+      +ToolCategoryId category
+      +string name
+      +string description
+      +string icon
+      +string[] keywords
+      +string componentPath
+      +ToolKind kind
+      +string transformPath?
+      +ToolOption[] options
+      +ToolSource source
+      +string baseSourcePath?
+      +ToolState state
+    }
+    class CategoryDefinition {
+      +ToolCategoryId id
+      +string name
+      +string nameEn
+      +string icon
+      +number order
+      +string description
+    }
+    class ToolOption {
+      +string key
+      +string label
+      +string type
+      +string|number|boolean defaultValue
+      +OptionValue[] values?
+    }
+    class ToolResult {
+      +"text"|"blob" kind
+      +string text?
+      +Blob blob?
+      +string filename?
+      +string mimeType?
+    }
+    class ToolStatus {
+      +string state
+      +string message?
+    }
+    class ToolActions {
+      +copy(text, label) Promise~boolean~
+      +download(result, filename) void
+      +clear() void
+      +swap() void
+    }
+    class ToolViewProps {
+      +string toolId
+      +ToolActions actions
+    }
+    class ToolViewEmits {
+      +outputChange(result) void
+      +statusChange(status) void
+    }
+    class ToolTransform {
+      <<type>>
+      +run(input, options) ToolResult
+    }
+    class Registry {
+      +CategoryDefinition[] categories
+      +ToolDefinition[] tools
+      +ToolDefinition[] comingSoonTools
+      +getTool(id) ToolDefinition
+      +getToolsByCategory(id) ToolDefinition[]
+      +searchTools(keyword) ToolDefinition[]
+    }
+    class Loader {
+      +loadToolComponent(def) Component
+    }
+    class Factory {
+      +defineTextTool(id, transform) Component
+    }
+    class ToolView {
+      +ToolDefinition current
+      +ToolActions actions
+      +onOutputChange(result) void
+      +onStatusChange(status) void
+    }
+    class HomeView {
+      +renderCategories() void
+      +onCardClick(id) void
+    }
+    class ThemeStore {
+      +"light"|"dark" theme
+      +toggle() void
+      +persist() void
+    }
+
+    Registry "1" o-- "11" CategoryDefinition : 分类常量
+    Registry "1" o-- "40" ToolDefinition : 工具注册表
+    ToolDefinition "1" *-- "0..*" ToolOption : 选项
+    ToolDefinition "1" --> "1" CategoryDefinition : 归属
+    ToolView "1" --> "1" ToolDefinition : 按 id 解析
+    ToolView "1" --> "1" Loader : 动态加载
+    Loader ..> ToolViewProps : 组件契约
+    ToolView "1" *-- "1" ToolActions : 创建并注入
+    ToolViewProps "1" *-- "1" ToolActions : 包含
+    ToolViewEmits ..> ToolResult : 上报
+    ToolViewEmits ..> ToolStatus : 上报
+    Factory ..> ToolTransform : 包装
+    Factory ..> ToolViewProps : 产出组件实现
+    HomeView ..> Registry : 读取目录
+    ThemeStore ..> ToolView : 提供 CSS 变量

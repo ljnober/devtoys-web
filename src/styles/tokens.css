@@ -1,0 +1,69 @@
+/* 全局设计令牌：所有颜色、间距、圆角与字体均从此文件读取，组件内禁止写死颜色。 */
+:root {
+  /* 颜色 */
+  --dt-bg: #f5f7fb;
+  --dt-fg: #1f2937;
+  --dt-card-bg: #ffffff;
+  --dt-primary: #2563eb;
+  --dt-primary-hover: #1d4ed8;
+  --dt-primary-contrast: #ffffff;
+  --dt-border: #e2e8f0;
+  --dt-muted: #64748b;
+  --dt-success: #059669;
+  --dt-danger: #dc2626;
+  --dt-warning: #d97706;
+  --dt-code-bg: #f1f5f9;
+  --dt-input-bg: #ffffff;
+  --dt-overlay: rgba(15, 23, 42, 0.45);
+  --dt-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+  --dt-shadow-hover: 0 6px 18px rgba(15, 23, 42, 0.14);
+
+  /* 间距 */
+  --dt-space-1: 4px;
+  --dt-space-2: 8px;
+  --dt-space-3: 12px;
+  --dt-space-4: 16px;
+  --dt-space-5: 24px;
+  --dt-space-6: 32px;
+  --dt-space-7: 48px;
+
+  /* 圆角 */
+  --dt-radius-sm: 8px;
+  --dt-radius: 12px;
+  --dt-radius-lg: 18px;
+  --dt-radius-pill: 999px;
+
+  /* 字体 */
+  --dt-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --dt-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  --dt-font-size-sm: 13px;
+  --dt-font-size: 15px;
+  --dt-font-size-lg: 20px;
+  --dt-font-size-xl: 28px;
+
+  /* 布局 */
+  --dt-header-height: 64px;
+  --dt-page-width: 1200px;
+  --dt-touch-target: 44px;
+}
+
+/* 暗色主题：覆盖同名变量，Element Plus 的 html.dark 类由 theme store 同步切换。 */
+html[data-theme='dark'] {
+  --dt-bg: #0f172a;
+  --dt-fg: #e2e8f0;
+  --dt-card-bg: #1e293b;
+  --dt-primary: #60a5fa;
+  --dt-primary-hover: #93c5fd;
+  --dt-primary-contrast: #0f172a;
+  --dt-border: #334155;
+  --dt-muted: #94a3b8;
+  --dt-success: #34d399;
+  --dt-danger: #f87171;
+  --dt-warning: #fbbf24;
+  --dt-code-bg: #0b1220;
+  --dt-input-bg: #172033;
+  --dt-overlay: rgba(2, 6, 23, 0.7);
+  --dt-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --dt-shadow-hover: 0 6px 18px rgba(0, 0, 0, 0.5);
+}

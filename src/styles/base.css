@@ -1,0 +1,135 @@
+/* 基础重置 + 布局骨架 + 响应式断点。 */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--dt-bg);
+  color: var(--dt-fg);
+  font-family: var(--dt-font-sans);
+  font-size: var(--dt-font-size);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--dt-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--dt-primary-hover);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* 通用容器与卡片网格 */
+.dt-container {
+  width: 100%;
+  max-width: var(--dt-page-width);
+  margin: 0 auto;
+  padding: 0 var(--dt-space-5);
+}
+
+.dt-card {
+  background: var(--dt-card-bg);
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius);
+  box-shadow: var(--dt-shadow);
+}
+
+.dt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--dt-space-4);
+}
+
+.dt-button {
+  min-height: var(--dt-touch-target);
+  padding: var(--dt-space-2) var(--dt-space-4);
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  background: var(--dt-card-bg);
+  color: var(--dt-fg);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.dt-button:hover:not(:disabled) {
+  border-color: var(--dt-primary);
+  box-shadow: var(--dt-shadow-hover);
+}
+
+.dt-button--primary {
+  background: var(--dt-primary);
+  border-color: var(--dt-primary);
+  color: var(--dt-primary-contrast);
+}
+
+/* T01 文本工具工厂生成的通用双栏样式，复用同一套令牌。 */
+.dt-text-tool {
+  display: grid;
+  gap: var(--dt-space-2);
+}
+
+.dt-tool-label {
+  font-size: var(--dt-font-size-sm);
+  color: var(--dt-muted);
+}
+
+.dt-tool-input,
+.dt-tool-output {
+  width: 100%;
+  min-height: 220px;
+  padding: var(--dt-space-3);
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  background: var(--dt-input-bg);
+  color: var(--dt-fg);
+  font-family: var(--dt-font-mono);
+  font-size: var(--dt-font-size-sm);
+  resize: vertical;
+}
+
+/* 移动端：单列、纵向双栏、触摸目标放大 */
+@media (max-width: 768px) {
+  .dt-container {
+    padding: 0 var(--dt-space-4);
+  }
+
+  .dt-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dt-tool-input,
+  .dt-tool-output {
+    min-height: 160px;
+  }
+
+  .dt-button {
+    min-height: var(--dt-touch-target);
+  }
+}

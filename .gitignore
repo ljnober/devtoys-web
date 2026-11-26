@@ -1,0 +1,13 @@
+node_modules
+dist/
+.yarn/
+yarn.lock
+components.d.ts
+auto-imports.d.ts
+env.d.ts
+*.log
+.vscode/
+.env.local
+.env.*.local
+/devtoys
+stats.html
