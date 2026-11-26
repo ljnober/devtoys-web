@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // 文字转语音：默认角色使用浏览器系统语音；上传音频后本地提取声纹，
 // 用 piper-plus 的零样本模型合成克隆语音。模型、音频与声纹均不上传。
+// 智能韵律开关：本地规则引擎按标点生成停顿与语速；云端引擎把文本
+// 发给自配置的大模型接口生成标注（会外发文本，默认关闭）。
 import { computed, inject, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
-import type { AudioResult } from 'piper-plus'
+import { AudioResult, parseSsml } from 'piper-plus'
 import type { ToolViewProps, ToolViewEmits, ToolResult, ToolStatus } from '@/tools/contracts'
 import {
   createVoiceId,
@@ -12,8 +14,17 @@ import {
   type VoiceProfile
 } from '@/utils/voiceProfiles'
 import ModelSelect from '@/components/ModelSelect.vue'
+import TtsProgressPanel, { type TtsStage } from '@/components/TtsProgressPanel.vue'
 import { getTtsModel, ttsModels } from '@/data/ttsModels'
 import { getSpeakerEncoder, getTtsRuntime } from '@/utils/ttsRuntime'
+import {
+  buildRuleSsml,
+  generateSsml,
+  getProsodyEngine,
+  prosodyEngines,
+  type CloudProsodyConfig,
+  type ProsodyEngineId
+} from '@/utils/prosody'
 
 const props = defineProps<ToolViewProps>()
 const emit = defineEmits<ToolViewEmits>()
@@ -40,17 +51,33 @@ const systemVoices = ref<SystemVoiceOption[]>([])
 const customVoices = ref<VoiceProfile[]>([])
 const roleId = ref('')
 const busy = ref(false)
-const progressMessage = ref('')
 const note = ref('')
 const audioBlob = ref<Blob | null>(null)
 const audioUrl = ref('')
 const audioDuration = ref(0)
 const audioElement = ref<HTMLAudioElement | null>(null)
 
+// —— 韵律引擎与进度状态 ——
+const prosodyEngineId = ref<ProsodyEngineId>('rules')
+const cloudEndpoint = ref('')
+const cloudModel = ref('')
+const cloudApiKey = ref('')
+const showCloudConfig = ref(false)
+const stage = ref<TtsStage | null>(null)
+const stagePercent = ref(0)
+const sentenceIndex = ref(0)
+const sentenceTotal = ref(0)
+const synthesizedSeconds = ref(0)
+const stageDetail = ref('')
+let abortController: AbortController | null = null
+/** 逐句合成循环中置为 true，下一次句间检查即退出。 */
+let cancelRequested = false
+
 const uploadName = ref('')
 const uploadFile = ref<File | null>(null)
 const consent = ref(false)
 const enrolling = ref(false)
+const progressMessage = ref('')
 
 const result = computed<ToolResult>(() => ({
   kind: 'blob',
@@ -66,6 +93,15 @@ const selectedCustomVoice = computed<VoiceProfile | undefined>(() => {
   const id = roleId.value.slice(7)
   return customVoices.value.find(voice => voice.id === id)
 })
+const selectedProsodyEngine = computed(() => getProsodyEngine(prosodyEngineId.value))
+const cloudConfig = computed<CloudProsodyConfig | undefined>(() => {
+  if (prosodyEngineId.value !== 'cloud') return undefined
+  return {
+    endpoint: cloudEndpoint.value.trim(),
+    model: cloudModel.value.trim(),
+    apiKey: cloudApiKey.value.trim()
+  }
+})
 
 function emitError(message: string): void {
   emit('output-change', { kind: 'text', text: '' })
@@ -74,6 +110,57 @@ function emitError(message: string): void {
 
 function emitSuccess(message: string): void {
   emit('status-change', { state: 'success', message } as ToolStatus)
+}
+
+function resetProgress(): void {
+  stage.value = null
+  stagePercent.value = 0
+  sentenceIndex.value = 0
+  sentenceTotal.value = 0
+  synthesizedSeconds.value = 0
+  stageDetail.value = ''
+}
+
+function requestCancel(): void {
+  cancelRequested = true
+  abortController?.abort()
+  abortController = null
+  stageDetail.value = '正在取消…'
+  // 下载/推理无法真正中止底层 fetch，先收起面板并复位按钮，
+  // 后台任务完成后结果会被丢弃。
+  stage.value = null
+  note.value = '已取消本次生成。'
+  emit('status-change', { state: 'idle' } as ToolStatus)
+  emit('output-change', { kind: 'text', text: '' })
+}
+
+/** 与取消标志竞争：一旦取消立即抛 AbortError，不等后台任务结束。 */
+function raceCancel<T>(task: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setInterval(() => {
+      if (cancelRequested) {
+        clearInterval(timer)
+        reject(new DOMException('已取消', 'AbortError'))
+      }
+    }, 100)
+    task.then(
+      value => {
+        clearInterval(timer)
+        if (cancelRequested) reject(new DOMException('已取消', 'AbortError'))
+        else resolve(value)
+      },
+      error => {
+        clearInterval(timer)
+        reject(error)
+      }
+    )
+  })
+}
+
+function checkCancelled(): void {
+  if (cancelRequested) {
+    throw new DOMException('已取消', 'AbortError')
+  }
 }
 
 function refreshSystemVoices(): void {
@@ -129,6 +216,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  requestCancel()
   if (typeof speechSynthesis !== 'undefined') {
     speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged)
     speechSynthesis.cancel()
@@ -184,6 +272,9 @@ async function createRole(): Promise<void> {
   }
   enrolling.value = true
   progressMessage.value = '正在解码参考音频'
+  resetProgress()
+  stage.value = 'engine'
+  stageDetail.value = '正在解码参考音频'
   emit('status-change', { state: 'processing' } as ToolStatus)
   try {
     const buffer = await decodeAudio(uploadFile.value)
@@ -215,6 +306,8 @@ async function createRole(): Promise<void> {
   } finally {
     enrolling.value = false
     progressMessage.value = ''
+    stage.value = null
+    stageDetail.value = ''
   }
 }
 
@@ -276,22 +369,92 @@ async function synthesizeModel(profile?: VoiceProfile): Promise<void> {
   if (profile && !definition.supportsCloning) {
     throw new Error('当前模型不支持声音克隆，请切换到「零样本克隆 zs-v1」')
   }
-  progressMessage.value = `正在加载 ${definition.name}`
-  const tts = await getTtsRuntime(modelId.value, info => {
-    progressMessage.value = info.message
-  })
-  progressMessage.value = profile ? '正在生成克隆语音' : '正在生成语音'
-  const audio: AudioResult = await tts.synthesize(text.value, {
-    language: 'zh',
-    speakerEmbedding: profile?.embedding,
-    lengthScale: 1 / rate.value
-  })
+
+  // —— 阶段 1/2：下载与引擎（仅首次或换模型时可见）——
+  stage.value = 'download'
+  stageDetail.value = `${definition.name} · ${definition.sizeLabel}`
+  const tts = await raceCancel(getTtsRuntime(modelId.value, info => {
+    if (info.stage === 'model') {
+      stage.value = 'download'
+      stagePercent.value = info.percent ?? stagePercent.value
+      stageDetail.value = info.message
+    } else if (info.stage === 'phonemizer') {
+      stage.value = 'engine'
+      stageDetail.value = info.message
+    }
+  }))
+
+  // —— 阶段 3：分析文本（本地规则瞬时完成；云端需等待接口）——
+  checkCancelled()
+  stage.value = 'analyze'
+  stageDetail.value = prosodyEngineId.value === 'cloud'
+    ? '云端引擎分析语气与语速（文本将发送到所配置接口）'
+    : '本地规则分析标点与语气'
+  const context = { rate: rate.value }
+  abortController = new AbortController()
+  let ssmlOrText = text.value
+  try {
+    ssmlOrText = await generateSsml(
+      text.value,
+      prosodyEngineId.value,
+      context,
+      cloudConfig.value,
+      abortController.signal
+    )
+  } catch (error) {
+    if ((error as DOMException)?.name === 'AbortError') throw error
+    // 云端失败回退规则引擎，保证可用性
+    note.value = error instanceof Error ? error.message : '韵律生成失败，已回退本地规则'
+    ssmlOrText = buildRuleSsml(text.value, context)
+  } finally {
+    abortController = null
+  }
+
+  // —— 阶段 4：逐句合成（支持取消与句级进度）——
+  checkCancelled()
+  stage.value = 'synthesize'
+  const segments = parseSsml(ssmlOrText).filter(seg => seg.text.trim().length > 0)
+  sentenceTotal.value = segments.length
+  sentenceIndex.value = 0
+  synthesizedSeconds.value = 0
+  stageDetail.value = ''
+
+  const sampleRate = tts.config?.audio?.sample_rate ?? 22050
+  let samples = new Float32Array(0)
+  for (const seg of segments) {
+    checkCancelled()
+    sentenceIndex.value += 1
+    stageDetail.value = seg.text.length > 24 ? `${seg.text.slice(0, 24)}…` : seg.text
+    // seg.rate 已被 generateSsml 换算为「相对全局 rate 的倍率」，
+    // 与全局 lengthScale 相乘还原成模型 length_scale。
+    const piece = await raceCancel(tts.synthesize(seg.text, {
+      language: 'zh',
+      speakerEmbedding: profile?.embedding,
+      lengthScale: 1 / rate.value * (seg.rate ?? 1)
+    }))
+    const grown = new Float32Array(samples.length + piece.samples.length)
+    grown.set(samples, 0)
+    grown.set(piece.samples, samples.length)
+    samples = grown
+    synthesizedSeconds.value += piece.duration
+    if (seg.breakMs > 0) {
+      const nSilence = Math.floor((seg.breakMs / 1000) * sampleRate)
+      const padded = new Float32Array(samples.length + nSilence)
+      padded.set(samples, 0)
+      samples = padded
+    }
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+  checkCancelled()
+
+  const audio = new AudioResult(samples, sampleRate)
   const blob = audio.toBlob()
   audioBlob.value = blob
   audioDuration.value = audio.duration
   playBlob(blob)
   emit('output-change', result.value)
   emitSuccess(`已生成 ${audio.duration.toFixed(1)} 秒语音`)
+  stage.value = 'done'
   note.value = `${definition.credit ? `请标注「${definition.credit}」；` : ''}模型「${definition.name}」在本机推理，首次使用会从公开镜像下载并缓存。`
 }
 
@@ -306,6 +469,9 @@ async function synthesize(): Promise<void> {
   }
   busy.value = true
   note.value = ''
+  cancelRequested = false
+  abortController = null
+  resetProgress()
   emit('status-change', { state: 'processing' } as ToolStatus)
   try {
     if (roleId.value.startsWith('system:')) {
@@ -318,10 +484,20 @@ async function synthesize(): Promise<void> {
       await synthesizeModel(profile)
     }
   } catch (error) {
-    emitError(error instanceof Error ? error.message : '语音生成失败，请重试')
+    if ((error as DOMException)?.name === 'AbortError') {
+      stage.value = null
+      note.value = '已取消本次生成。'
+      emit('status-change', { state: 'idle' } as ToolStatus)
+      emit('output-change', { kind: 'text', text: '' })
+    } else {
+      emitError(error instanceof Error ? error.message : '语音生成失败，请重试')
+      stage.value = null
+    }
   } finally {
     busy.value = false
     progressMessage.value = ''
+    cancelRequested = false
+    abortController = null
   }
 }
 
@@ -356,6 +532,48 @@ function download(): void {
       <p class="dt-tts__hint">模型按需下载并缓存，不上传任何音频或文本。</p>
 
       <div class="dt-tts__row">
+        <label class="dt-tts__label" for="tts-prosody">语气语速</label>
+        <select id="tts-prosody" v-model="prosodyEngineId" class="dt-tts__select">
+          <option v-for="engine in prosodyEngines" :key="engine.id" :value="engine.id">
+            {{ engine.name }}
+          </option>
+        </select>
+      </div>
+      <p v-if="selectedProsodyEngine" class="dt-tts__hint">
+        {{ selectedProsodyEngine.description }}<template v-if="selectedProsodyEngine.needsNetwork">（⚠️ 使用时会外发文本）</template>
+      </p>
+
+      <div v-if="prosodyEngineId === 'cloud'" class="dt-tts__cloud">
+        <button
+          class="dt-tts__cloud-toggle"
+          type="button"
+          @click="showCloudConfig = !showCloudConfig">
+          {{ showCloudConfig ? '收起接口配置' : '配置接口（OpenAI 兼容）' }}
+        </button>
+        <div v-if="showCloudConfig" class="dt-tts__cloud-form">
+          <input
+            v-model="cloudEndpoint"
+            class="dt-tts__input"
+            type="url"
+            aria-label="接口地址"
+            placeholder="接口地址，如 https://api.example.com/v1/chat/completions" />
+          <input
+            v-model="cloudModel"
+            class="dt-tts__input"
+            type="text"
+            aria-label="模型名称"
+            placeholder="模型名称，如 gpt-4o-mini" />
+          <input
+            v-model="cloudApiKey"
+            class="dt-tts__input"
+            type="password"
+            aria-label="API Key"
+            placeholder="API Key（可选，仅保存在当前页面）" />
+          <p class="dt-tts__hint">配置只保存在内存，刷新即清空；文本会发送到该接口。</p>
+        </div>
+      </div>
+
+      <div class="dt-tts__row">
         <label class="dt-tts__label" for="tts-role">角色</label>
         <select id="tts-role" v-model="roleId" class="dt-tts__select">
           <optgroup label="默认角色（系统语音）">
@@ -388,10 +606,21 @@ function download(): void {
         </button>
       </div>
 
+      <TtsProgressPanel
+        v-if="stage"
+        :stage="stage"
+        :percent="stagePercent"
+        :sentence-index="sentenceIndex"
+        :sentence-total="sentenceTotal"
+        :synthesized-seconds="synthesizedSeconds"
+        :detail="stageDetail"
+        :cancellable="busy"
+        @cancel="requestCancel" />
+
       <audio v-if="audioUrl" ref="audioElement" class="dt-tts__audio" controls :src="audioUrl"></audio>
       <p v-if="audioDuration" class="dt-tts__progress">生成时长 {{ audioDuration.toFixed(1) }} 秒</p>
       <p v-if="progressMessage" class="dt-tts__progress">{{ progressMessage }}</p>
-      <p class="dt-tts__note">{{ note || '语速由工具页上方的选项控制；系统音色可直接试听，模型音色和自定义音色可试听并下载。' }}</p>
+      <p class="dt-tts__note">{{ note || '语气语速开关在上方；系统音色只能试听，模型音色和自定义音色可试听并下载。' }}</p>
     </section>
 
     <section class="dt-tts__section dt-tts__enroll">
@@ -548,5 +777,35 @@ function download(): void {
   border: 0;
   background: transparent;
   color: var(--dt-danger);
+}
+.dt-tts__cloud {
+  margin: var(--dt-space-2) 0 var(--dt-space-3);
+}
+.dt-tts__cloud-toggle {
+  min-height: 36px;
+  padding: 0 var(--dt-space-3);
+  border: 1px dashed var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  background: transparent;
+  color: var(--dt-muted);
+  font-size: var(--dt-font-size-sm);
+  cursor: pointer;
+}
+.dt-tts__cloud-toggle:hover {
+  color: var(--dt-primary);
+  border-color: var(--dt-primary);
+}
+.dt-tts__cloud-form {
+  display: grid;
+  gap: var(--dt-space-2);
+  margin-top: var(--dt-space-2);
+  padding: var(--dt-space-3);
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius-sm);
+  background: var(--dt-input-bg);
+}
+.dt-tts__cloud-form .dt-tts__input {
+  width: 100%;
+  flex: none;
 }
 </style>

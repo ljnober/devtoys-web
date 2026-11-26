@@ -9,6 +9,8 @@ import { getTtsModel } from '@/data/ttsModels'
 export interface RuntimeProgress {
   stage: string
   message: string
+  /** 模型下载进度：0–100；其他阶段缺省。 */
+  percent?: number
 }
 
 const REVISION = '3620ed788667cb76f08bd6cf2db8152c1f4c8bd1'
@@ -123,6 +125,13 @@ const PROGRESS_LABELS: Record<string, string> = {
   ready: '本地语音引擎就绪'
 }
 
+/** 把 piper-plus 的阶段进度（0–1）换算成面板用的百分比；model 阶段之外无意义。 */
+function stagePercent(stage: string, progress: number): number | undefined {
+  if (stage !== 'model') return undefined
+  const clamped = Math.min(1, Math.max(0, Number.isFinite(progress) ? progress : 0))
+  return Math.round(clamped * 100)
+}
+
 /** 获取（并复用）指定模型的 TTS 会话；不同模型独立缓存。 */
 export function getTtsRuntime(
   modelId: string,
@@ -148,7 +157,8 @@ export function getTtsRuntime(
           onProgress: info => {
             onProgress?.({
               stage: info.stage,
-              message: PROGRESS_LABELS[info.stage] ?? (info.message || '正在准备本地语音模型')
+              message: PROGRESS_LABELS[info.stage] ?? (info.message || '正在准备本地语音模型'),
+              percent: stagePercent(info.stage, info.progress)
             })
           }
         })

@@ -10,6 +10,16 @@ import path from 'node:path'
 import type { ToolResult } from '../src/tools/contracts.ts'
 import { getTtsModel, ttsModels } from '../src/data/ttsModels.ts'
 import {
+  buildRuleSsml,
+  buildSsmlFromMarks,
+  escapeXmlText,
+  generateSsml,
+  getProsodyEngine,
+  prosodyEngines,
+  splitIntoClauses,
+  type ProsodyMark
+} from '../src/utils/prosody.ts'
+import {
   categories,
   tools,
   comingSoonTools,
@@ -223,6 +233,85 @@ describe('ttsModels：语音模型配置', () => {
     assert.equal(getTtsModel('zs-v1')?.supportsCloning, true)
     assert.equal(getTtsModel('css10')?.supportsCloning, false)
     assert.equal(getTtsModel('不存在'), undefined)
+  })
+})
+
+// ——— 1c. 智能韵律引擎（TTS 语气语速自动生成）———
+
+describe('prosody：智能韵律引擎', () => {
+  test('引擎清单含 rules/cloud/off，默认 rules 且本地引擎不联网', () => {
+    assert.deepEqual(prosodyEngines.map(engine => engine.id).sort(), ['cloud', 'off', 'rules'])
+    assert.equal(getProsodyEngine('rules')?.needsNetwork, false)
+    assert.equal(getProsodyEngine('cloud')?.needsNetwork, true)
+    assert.equal(getProsodyEngine('不存在'), undefined)
+  })
+
+  test('escapeXmlText 转义 & < >，其余标点保留', () => {
+    assert.equal(escapeXmlText('a&b<c>d'), 'a&amp;b&lt;c&gt;d')
+    assert.equal(escapeXmlText('你好，世界！'), '你好，世界！')
+  })
+
+  test('splitIntoClauses 按句末标点切句并丢弃空段', () => {
+    assert.deepEqual(splitIntoClauses('第一句。第二句！第三句？'), ['第一句。', '第二句！', '第三句？'])
+    assert.deepEqual(splitIntoClauses(''), [])
+    assert.deepEqual(splitIntoClauses('   \n  '), [])
+    assert.deepEqual(splitIntoClauses('没有标点的整段'), ['没有标点的整段'])
+  })
+
+  test('buildRuleSsml：句末与句中停顿、问句放慢、感叹句加快、换行间隔', () => {
+    const ssml = buildRuleSsml('你好，世界！今天怎么样？再见。', { rate: 1 })
+    assert.ok(ssml.startsWith('<speak>'), '应以 <speak> 开头')
+    assert.ok(ssml.endsWith('</speak>'), '应以 </speak> 结尾')
+    assert.ok(ssml.includes('<break time="220ms"/>'), '逗号应插入 220ms 停顿')
+    assert.ok(ssml.includes('<break time="300ms"/>'), '句号后应插入句末停顿')
+    assert.ok(ssml.includes('<break time="560ms"/>'), '问句停顿应更长')
+    assert.ok(ssml.includes('&amp;') === false, '无 & 时不应转义')
+    const prosodies = ssml.match(/<prosody rate="([%.\d]+)">/g) ?? []
+    assert.ok(prosodies.length === 3, '三句应各有一个 prosody')
+    // 感叹句 108.7%（快），问句 89.3%（慢）：lengthScale 感叹 0.92 / 问句 1.12
+    assert.ok(ssml.includes('rate="108.7%"'), '感叹句应加快')
+    assert.ok(ssml.includes('rate="89.3%"'), '问句应放慢')
+  })
+
+  test('buildRuleSsml：特殊字符被转义，避免 XML 解析失败', () => {
+    const ssml = buildRuleSsml('A&B<C>。', { rate: 1 })
+    assert.ok(ssml.includes('A&amp;B&lt;C&gt;'))
+    assert.ok(!ssml.includes('A&B'))
+  })
+
+  test('buildRuleSsml：全局语速叠加句级调节', () => {
+    const fast = buildRuleSsml('你好。', { rate: 2 })
+    assert.ok(fast.includes('rate="200%"'), '全局语速 2 倍（lengthScale 0.5）→ 200%')
+    const slow = buildRuleSsml('你好。', { rate: 0.5 })
+    assert.ok(slow.includes('rate="50%"'), '全局语速 0.5 倍（lengthScale 2）→ 50%')
+  })
+
+  test('buildSsmlFromMarks：云端标注转 SSML 并限制范围', () => {
+    const marks: ProsodyMark[] = [
+      { text: '快一点说', rate: 0.7, pauseMs: 200 },
+      { text: '慢一点说', rate: 1.4, pauseMs: 900 }
+    ]
+    const ssml = buildSsmlFromMarks(marks, { rate: 1 })
+    assert.ok(ssml.startsWith('<speak>'))
+    assert.ok(ssml.includes('<prosody rate="142.9%">'))
+    assert.ok(ssml.includes('<prosody rate="71.4%">'))
+    assert.ok(ssml.includes('<break time="200ms"/>'))
+    assert.ok(ssml.includes('<break time="900ms"/>'))
+  })
+
+  test('generateSsml：off 引擎原样返回文本，rules 引擎返回 SSML', async () => {
+    const plain = '你好。'
+    assert.equal(await generateSsml(plain, 'off', { rate: 1 }), plain)
+    const ssml = await generateSsml(plain, 'rules', { rate: 1 })
+    assert.notEqual(ssml, plain)
+    assert.ok(ssml.startsWith('<speak>'))
+  })
+
+  test('generateSsml：cloud 未配置接口时抛出中文错误', async () => {
+    await assert.rejects(
+      () => generateSsml('你好。', 'cloud', { rate: 1 }),
+      /未配置/
+    )
   })
 })
 
