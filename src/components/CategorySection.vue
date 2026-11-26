@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 单个分类区块：标题 + 数量 + 工具卡片网格。
+// 单个分类区块：英文大写小标题 + 中文分类名 + 三列工具卡片网格。
 import ToolCard from './ToolCard.vue'
 import type { CategoryDefinition, ToolDefinition } from '@/tools/contracts'
 
@@ -13,16 +13,11 @@ defineProps<{
 <template>
   <section :id="`category-${category.id}`" class="dt-category">
     <div class="dt-category__head">
-      <h2 class="dt-category__title">
-        <span aria-hidden="true">{{ category.icon }}</span>
-        {{ category.name }}
-        <small>{{ category.nameEn }}</small>
-      </h2>
-      <span class="dt-category__count">{{ tools.length }} 个工具</span>
+      <span class="dt-category__eyebrow">{{ category.nameEn.toUpperCase() }}</span>
+      <span class="dt-category__subtitle">{{ category.name }}</span>
     </div>
-    <p class="dt-category__desc">{{ category.description }}</p>
 
-    <div v-if="tools.length || comingSoon?.length" class="dt-grid">
+    <div v-if="tools.length || comingSoon?.length" class="dt-category__grid">
       <ToolCard v-for="tool in tools" :key="tool.id" :tool="tool" />
       <ToolCard v-for="tool in comingSoon ?? []" :key="tool.id" :tool="tool" />
     </div>
@@ -32,43 +27,45 @@ defineProps<{
 
 <style scoped>
 .dt-category {
-  margin-top: var(--dt-space-6);
+  margin-top: var(--dt-space-5);
 }
 .dt-category__head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--dt-space-3);
-  flex-wrap: wrap;
-}
-.dt-category__title {
-  display: inline-flex;
   align-items: baseline;
   gap: var(--dt-space-2);
-  margin: 0;
-  font-size: var(--dt-font-size-lg);
+  margin-bottom: var(--dt-space-3);
 }
-.dt-category__title small {
+.dt-category__eyebrow {
   color: var(--dt-muted);
   font-size: var(--dt-font-size-sm);
-  font-weight: 400;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-.dt-category__count {
-  padding: var(--dt-space-1) var(--dt-space-3);
-  border-radius: var(--dt-radius-pill);
-  background: var(--dt-code-bg);
+.dt-category__subtitle {
   color: var(--dt-muted);
   font-size: var(--dt-font-size-sm);
 }
-.dt-category__desc {
-  margin: var(--dt-space-1) 0 var(--dt-space-4);
-  color: var(--dt-muted);
-  font-size: var(--dt-font-size-sm);
+.dt-category__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--dt-space-3);
 }
 .dt-category__empty {
   padding: var(--dt-space-4);
   border: 1px dashed var(--dt-border);
   border-radius: var(--dt-radius);
   color: var(--dt-muted);
+  font-size: var(--dt-font-size-sm);
+}
+@media (max-width: 1100px) {
+  .dt-category__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 768px) {
+  .dt-category__grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

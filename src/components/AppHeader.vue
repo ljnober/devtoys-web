@@ -1,11 +1,10 @@
 <script setup lang="ts">
-// 全站顶部栏：本地 Logo + 中文搜索 + 主题切换 + 中文标识 + 移动端菜单入口。
+// 全站顶部栏：本地 Logo + 中文标识 + 主题切换 + 移动端菜单入口。
+// 搜索框已下沉到左侧导航，与侧栏共用同一个搜索 store。
 import { RouterLink } from 'vue-router'
-import { useSearchStore } from '@/stores/search'
 import ThemeToggle from './ThemeToggle.vue'
 
 const emit = defineEmits<{ (e: 'open-nav'): void }>()
-const searchStore = useSearchStore()
 </script>
 
 <template>
@@ -29,22 +28,8 @@ const searchStore = useSearchStore()
         <span>DevToys Web</span>
       </RouterLink>
 
-      <div class="dt-header__search">
-        <span class="dt-header__search-icon" aria-hidden="true">🔍</span>
-        <input
-          v-model="searchStore.keyword"
-          type="search"
-          aria-label="搜索工具"
-          placeholder="搜索工具（支持中文 / 英文）" />
-        <button
-          v-if="searchStore.keyword"
-          class="dt-header__clear"
-          type="button"
-          aria-label="清空搜索"
-          @click="searchStore.clear()">
-          ✕
-        </button>
-      </div>
+      <span class="dt-header__tagline">免费的 Web 开发者工具</span>
+      <span class="dt-header__spacer" aria-hidden="true"></span>
 
       <span class="dt-header__lang" title="当前界面：中文">中</span>
       <ThemeToggle />
@@ -79,40 +64,14 @@ const searchStore = useSearchStore()
   width: 36px;
   height: 36px;
 }
-.dt-header__search {
-  position: relative;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-.dt-header__search input {
-  width: 100%;
-  min-height: var(--dt-touch-target);
-  padding: var(--dt-space-2) var(--dt-space-4) var(--dt-space-2) var(--dt-space-7);
-  border: 1px solid var(--dt-border);
-  border-radius: var(--dt-radius-pill);
-  background: var(--dt-input-bg);
-  color: var(--dt-fg);
-}
-.dt-header__search input:focus {
-  outline: 2px solid var(--dt-primary);
-  outline-offset: 1px;
-}
-.dt-header__search-icon {
-  position: absolute;
-  left: var(--dt-space-3);
-  pointer-events: none;
-}
-.dt-header__clear {
-  position: absolute;
-  right: var(--dt-space-2);
-  width: 32px;
-  height: 32px;
-  border: none;
-  border-radius: var(--dt-radius-pill);
-  background: transparent;
+.dt-header__tagline {
   color: var(--dt-muted);
+  font-size: var(--dt-font-size-sm);
+  white-space: nowrap;
+}
+.dt-header__spacer {
+  flex: 1;
+  min-width: var(--dt-space-2);
 }
 .dt-header__lang {
   display: inline-flex;
@@ -139,7 +98,8 @@ const searchStore = useSearchStore()
     align-items: center;
     justify-content: center;
   }
-  .dt-header__brand span {
+  .dt-header__brand span,
+  .dt-header__tagline {
     display: none;
   }
   .dt-header__inner {

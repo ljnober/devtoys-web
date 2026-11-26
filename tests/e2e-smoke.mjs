@@ -456,17 +456,18 @@ async function scenarioHome() {
     '首页 40 ready 卡 + 2 coming-soon 占位', JSON.stringify(counts))
   expect(counts.privacy, '首页隐私标识常驻（不上传）')
 
-  await setField('.dt-header__search input', '时间戳')
+  // 搜索框已按新版导航设计下沉到左侧常驻侧栏（AppSidebar），与首页共用 search store。
+  await setField('.dt-side__search input', '时间戳')
   await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 1`, '中文搜索「时间戳」', 4000)
   const search1 = await evaluate(`document.querySelector('a.dt-tool-card strong')?.textContent || ''`)
   expect(search1.includes('日期时间转换器'), '搜索「时间戳」过滤到日期时间转换器', search1)
 
-  await setField('.dt-header__search input', 'base64')
+  await setField('.dt-side__search input', 'base64')
   await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 1`, '搜索「base64」', 4000)
   const search2 = await evaluate(`document.querySelector('a.dt-tool-card strong')?.textContent || ''`)
   expect(search2.includes('Base64'), '搜索「base64」过滤到 Base64 工具', search2)
 
-  await click('.dt-header__clear')
+  await click('.dt-side__clear')
   await waitFor(`document.querySelectorAll('a.dt-tool-card').length === 40`, '清除搜索恢复 40 卡', 4000)
   await click('a.dt-tool-card', 12)
   await waitFor(`location.hash.includes('#/tool/')`, '点击卡片进入工具页', 4000)
@@ -736,22 +737,29 @@ async function scenarioResponsiveAndTheme() {
     expect(home.scrollWidth <= home.innerWidth + 1, `${label} 首页无横向溢出`, JSON.stringify(home))
 
     await openTool('json-format', 'JSON 格式化/压缩/校验')
+    // 新版：分类导航移到全局 AppSidebar，工具页主体不再内嵌 aside。
+    // 桌面侧栏常驻（约 280px）；移动端侧栏隐藏，由顶部汉堡打开抽屉。
     const tool = await evaluate(`(() => {
       const shell = document.querySelector('.dt-tool-shell');
-      const aside = document.querySelector('.dt-tool-shell__aside');
+      const sidebar = document.querySelector('.dt-app__sidebar');
+      const menu = document.querySelector('.dt-header__menu');
       const columns = shell ? getComputedStyle(shell).gridTemplateColumns.trim().split(/\\s+/).length : 0;
       return {
         scrollWidth: document.documentElement.scrollWidth,
         innerWidth: window.innerWidth,
         columns,
-        asideDisplay: aside ? getComputedStyle(aside).display : 'missing'
+        sidebarDisplay: sidebar ? getComputedStyle(sidebar).display : 'missing',
+        sidebarWidth: sidebar ? Math.round(sidebar.getBoundingClientRect().width) : 0,
+        menuDisplay: menu ? getComputedStyle(menu).display : 'missing'
       };
     })()`)
     expect(tool.scrollWidth <= tool.innerWidth + 1, `${label} 工具页无横向溢出`, JSON.stringify(tool))
     if (mobile) {
-      expect(tool.columns === 1 && tool.asideDisplay === 'none', `${label} 工具页移动端单栏`, JSON.stringify(tool))
+      expect(tool.sidebarDisplay === 'none' && tool.menuDisplay !== 'none',
+        `${label} 工具页移动端隐藏侧栏并显示汉堡`, JSON.stringify(tool))
     } else {
-      expect(tool.columns >= 2 && tool.asideDisplay !== 'none', `${label} 工具页桌面双栏`, JSON.stringify(tool))
+      expect(tool.sidebarDisplay !== 'none' && tool.sidebarWidth >= 270 && tool.sidebarWidth <= 290,
+        `${label} 工具页桌面常驻 280px 侧栏`, JSON.stringify(tool))
     }
   }
 

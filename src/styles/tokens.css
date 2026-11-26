@@ -18,6 +18,14 @@
   --dt-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
   --dt-shadow-hover: 0 6px 18px rgba(15, 23, 42, 0.14);
 
+  /* 侧栏与主区视觉令牌（浅色） */
+  --dt-sidebar-bg: #f7f7f8;
+  --dt-main-bg: #f8f8fa;
+  --dt-hover-bg: #eceef2;
+  --dt-active-bg: #e3e5ea;
+  --dt-icon-bg: #7c3aed;
+  --dt-icon-fg: #ffffff;
+
   /* 间距 */
   --dt-space-1: 4px;
   --dt-space-2: 8px;
@@ -66,4 +74,12 @@ html[data-theme='dark'] {
   --dt-overlay: rgba(2, 6, 23, 0.7);
   --dt-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   --dt-shadow-hover: 0 6px 18px rgba(0, 0, 0, 0.5);
+
+  /* 侧栏与主区视觉令牌（深色） */
+  --dt-sidebar-bg: #151b26;
+  --dt-main-bg: #111827;
+  --dt-hover-bg: #1f2937;
+  --dt-active-bg: #2b3648;
+  --dt-icon-bg: #8b5cf6;
+  --dt-icon-fg: #ffffff;
 }
