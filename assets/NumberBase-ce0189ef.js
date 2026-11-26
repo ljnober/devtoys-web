@@ -1,1 +1,0 @@
-import{d as o}from"./factory-c085e2c5.js";import{n as m}from"./transforms-converters-f6a13ab5.js";import"./he-7949c6f5.js";import"./index-d14f14b5.js";import"./_commonjsHelpers-de833af9.js";const s=o("number-base",m);export{s as default};
