@@ -1,0 +1,1 @@
+import{d as o}from"./factory-01bb99de.js";import"./he-7949c6f5.js";import{x as m}from"./transforms-formatters-15f3389b.js";import"./index-1d506c20.js";import"./_commonjsHelpers-de833af9.js";const p=o("xml-format",m);export{p as default};

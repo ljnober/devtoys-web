@@ -1,1 +1,0 @@
-import{d as o}from"./factory-890fe695.js";import"./he-7949c6f5.js";import{s as t}from"./transforms-formatters-15f3389b.js";import"./index-213f1e5d.js";import"./_commonjsHelpers-de833af9.js";const f=o("sql-format",t);export{f as default};
