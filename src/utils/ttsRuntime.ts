@@ -57,7 +57,7 @@ async function loadPinyinDictionaries(): Promise<void> {
 async function wasmLoader(): Promise<unknown> {
   await loadPinyinDictionaries()
   // piper-plus 未为该子路径提供 .d.ts，运行时由 Vite 静态打包。
-  // @ts-expect-error missing declaration for wasm entry
+  // @ts-ignore missing declaration for wasm entry
   const module = await import('piper-plus/wasm/multilingual') as any
   const Base = module.WasmPhonemizer as new (config: string) => {
     setChineseDictionary?: (single: Uint8Array, phrases: Uint8Array) => void

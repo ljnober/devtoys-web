@@ -189,9 +189,30 @@ try {
   })()`)
   record('语气语速下拉存在', prosody.exists === true)
   record('默认引擎为本地规则 rules', prosody.value === 'rules', `当前 ${prosody.value}`)
-  record('引擎下拉恰有 rules/cloud/off 三项', JSON.stringify(prosody.options?.sort()) === JSON.stringify(['cloud', 'off', 'rules']), JSON.stringify(prosody.options))
+  record('引擎下拉含 rules/local-llm/cloud/off 四项', JSON.stringify(prosody.options?.sort()) === JSON.stringify(['cloud', 'local-llm', 'off', 'rules']), JSON.stringify(prosody.options))
 
-  // 2. cloud 切换：配置入口显隐
+  // 2a. local-llm 切换：提示含下载体积，无外发警示
+  await client.evaluate(`(() => {
+    const el = document.querySelector('#tts-prosody')
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
+    setter.call(el, 'local-llm')
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  })()`)
+  await delay(250)
+  const llmHint = await client.evaluate(`(() => {
+    // 韵律引擎的 hint 是 #tts-prosody 所在 row 之后的第一个 .dt-tts__hint
+    const select = document.querySelector('#tts-prosody')
+    let node = select ? select.closest('.dt-tts__row')?.nextElementSibling : null
+    while (node && !node.classList?.contains('dt-tts__hint')) {
+      node = node.nextElementSibling
+    }
+    return node?.textContent || ''
+  })()`)
+  record('local-llm 提示包含「浏览器内推理」', llmHint.includes('浏览器内推理'), llmHint.slice(0, 60))
+  record('local-llm 提示包含首次下载体积', llmHint.includes('470 MB'), llmHint.slice(0, 60))
+  record('local-llm 不显示外发文本警示', !llmHint.includes('外发'), llmHint.slice(0, 60))
+
+  // 2b. cloud 切换：配置入口显隐 + 外发警示
   await client.evaluate(`(() => {
     const el = document.querySelector('#tts-prosody')
     const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set

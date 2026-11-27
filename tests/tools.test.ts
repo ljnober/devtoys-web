@@ -239,10 +239,16 @@ describe('ttsModels：语音模型配置', () => {
 // ——— 1c. 智能韵律引擎（TTS 语气语速自动生成）———
 
 describe('prosody：智能韵律引擎', () => {
-  test('引擎清单含 rules/cloud/off，默认 rules 且本地引擎不联网', () => {
-    assert.deepEqual(prosodyEngines.map(engine => engine.id).sort(), ['cloud', 'off', 'rules'])
+  test('引擎清单含 rules/local-llm/cloud/off，本地引擎不联网', () => {
+    assert.deepEqual(
+      prosodyEngines.map(engine => engine.id).sort(),
+      ['cloud', 'local-llm', 'off', 'rules']
+    )
+    assert.equal(prosodyEngines.length, 4)
     assert.equal(getProsodyEngine('rules')?.needsNetwork, false)
+    assert.equal(getProsodyEngine('local-llm')?.needsNetwork, false)
     assert.equal(getProsodyEngine('cloud')?.needsNetwork, true)
+    assert.equal(getProsodyEngine('local-llm')?.sizeLabel, '470 MB')
     assert.equal(getProsodyEngine('不存在'), undefined)
   })
 
@@ -286,7 +292,7 @@ describe('prosody：智能韵律引擎', () => {
     assert.ok(slow.includes('rate="50%"'), '全局语速 0.5 倍（lengthScale 2）→ 50%')
   })
 
-  test('buildSsmlFromMarks：云端标注转 SSML 并限制范围', () => {
+  test('buildSsmlFromMarks：本地/云端标注共用的 SSML 转换，速率范围约束生效', () => {
     const marks: ProsodyMark[] = [
       { text: '快一点说', rate: 0.7, pauseMs: 200 },
       { text: '慢一点说', rate: 1.4, pauseMs: 900 }
@@ -297,6 +303,9 @@ describe('prosody：智能韵律引擎', () => {
     assert.ok(ssml.includes('<prosody rate="71.4%">'))
     assert.ok(ssml.includes('<break time="200ms"/>'))
     assert.ok(ssml.includes('<break time="900ms"/>'))
+    // 标注文本同样需要转义，防止破坏 XML
+    const escaped = buildSsmlFromMarks([{ text: 'A&B<C>' }], { rate: 1 })
+    assert.ok(escaped.includes('A&amp;B&lt;C&gt;'))
   })
 
   test('generateSsml：off 引擎原样返回文本，rules 引擎返回 SSML', async () => {

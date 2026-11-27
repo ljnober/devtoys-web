@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // 文字转语音：默认角色使用浏览器系统语音；上传音频后本地提取声纹，
 // 用 piper-plus 的零样本模型合成克隆语音。模型、音频与声纹均不上传。
-// 智能韵律开关：本地规则引擎按标点生成停顿与语速；云端引擎把文本
-// 发给自配置的大模型接口生成标注（会外发文本，默认关闭）。
+// 智能韵律开关三档：本地规则 / 本地小模型（浏览器内推理，文本不出本机）/
+// 云端大模型（自配置接口，会外发文本）。
 import { computed, inject, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
 import { AudioResult, parseSsml } from 'piper-plus'
 import type { ToolViewProps, ToolViewEmits, ToolResult, ToolStatus } from '@/tools/contracts'
@@ -19,7 +19,9 @@ import { getTtsModel, ttsModels } from '@/data/ttsModels'
 import { getSpeakerEncoder, getTtsRuntime } from '@/utils/ttsRuntime'
 import {
   buildRuleSsml,
+  disposeLocalLlm,
   generateSsml,
+  getLocalLlm,
   getProsodyEngine,
   prosodyEngines,
   type CloudProsodyConfig,
@@ -217,6 +219,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   requestCancel()
+  // 离开工具页时释放小模型占用的内存/显存（缓存仍在，下次进入秒加载）
+  disposeLocalLlm()
   if (typeof speechSynthesis !== 'undefined') {
     speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged)
     speechSynthesis.cancel()
@@ -384,26 +388,42 @@ async function synthesizeModel(profile?: VoiceProfile): Promise<void> {
     }
   }))
 
-  // —— 阶段 3：分析文本（本地规则瞬时完成；云端需等待接口）——
+  // —— 阶段 3：分析文本 ——
+  // rules 瞬时完成；local-llm 先预热小模型（首次下载约 470 MB，之后离线）；
+  // cloud 把文本发给用户配置的接口。任一失败回退规则引擎。
   checkCancelled()
   stage.value = 'analyze'
-  stageDetail.value = prosodyEngineId.value === 'cloud'
-    ? '云端引擎分析语气与语速（文本将发送到所配置接口）'
-    : '本地规则分析标点与语气'
+  if (prosodyEngineId.value === 'local-llm') {
+    stageDetail.value = '本地小模型分析语气语速（浏览器内推理，文本不出本机）'
+    // 小模型首次下载复用 download 阶段的百分比条展示
+    await raceCancel(getLocalLlm(info => {
+      if (info.stage === 'download') {
+        stage.value = 'download'
+        stagePercent.value = info.percent ?? stagePercent.value
+        stageDetail.value = info.message
+      }
+    }))
+    stage.value = 'analyze'
+    stageDetail.value = '本地小模型正在标注语气与语速'
+  } else if (prosodyEngineId.value === 'cloud') {
+    stageDetail.value = '云端引擎分析语气与语速（文本将发送到所配置接口）'
+  } else {
+    stageDetail.value = '本地规则分析标点与语气'
+  }
   const context = { rate: rate.value }
   abortController = new AbortController()
   let ssmlOrText = text.value
   try {
-    ssmlOrText = await generateSsml(
+    ssmlOrText = await raceCancel(generateSsml(
       text.value,
       prosodyEngineId.value,
       context,
       cloudConfig.value,
       abortController.signal
-    )
+    ))
   } catch (error) {
     if ((error as DOMException)?.name === 'AbortError') throw error
-    // 云端失败回退规则引擎，保证可用性
+    // 引擎失败回退规则引擎，保证可用性
     note.value = error instanceof Error ? error.message : '韵律生成失败，已回退本地规则'
     ssmlOrText = buildRuleSsml(text.value, context)
   } finally {
@@ -540,7 +560,7 @@ function download(): void {
         </select>
       </div>
       <p v-if="selectedProsodyEngine" class="dt-tts__hint">
-        {{ selectedProsodyEngine.description }}<template v-if="selectedProsodyEngine.needsNetwork">（⚠️ 使用时会外发文本）</template>
+        {{ selectedProsodyEngine.description }}<template v-if="selectedProsodyEngine.needsNetwork">（⚠️ 使用时会外发文本）</template><template v-else-if="selectedProsodyEngine.sizeLabel">（📦 首次下载 {{ selectedProsodyEngine.sizeLabel }}，之后离线）</template>
       </p>
 
       <div v-if="prosodyEngineId === 'cloud'" class="dt-tts__cloud">
