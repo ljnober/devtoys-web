@@ -22,9 +22,11 @@ import {
   disposeLocalLlm,
   generateSsml,
   getLocalLlm,
+  getLocalLlmCacheStatus,
   getProsodyEngine,
   prosodyEngines,
   type CloudProsodyConfig,
+  type LocalLlmCacheStatus,
   type ProsodyEngineId
 } from '@/utils/prosody'
 
@@ -61,6 +63,7 @@ const audioElement = ref<HTMLAudioElement | null>(null)
 
 // —— 韵律引擎与进度状态 ——
 const prosodyEngineId = ref<ProsodyEngineId>('rules')
+const llmCacheStatus = ref<LocalLlmCacheStatus | null>(null)
 const cloudEndpoint = ref('')
 const cloudModel = ref('')
 const cloudApiKey = ref('')
@@ -182,6 +185,10 @@ function refreshSystemVoices(): void {
   }
 }
 
+async function refreshLlmCacheStatus(): Promise<void> {
+  llmCacheStatus.value = await getLocalLlmCacheStatus()
+}
+
 async function refreshCustomVoices(): Promise<void> {
   try {
     customVoices.value = await listVoiceProfiles()
@@ -212,6 +219,7 @@ function onModelChange(): void {
 onMounted(() => {
   refreshSystemVoices()
   void refreshCustomVoices()
+  void refreshLlmCacheStatus()
   if (typeof speechSynthesis !== 'undefined') {
     speechSynthesis.addEventListener('voiceschanged', onVoicesChanged)
   }
@@ -378,6 +386,7 @@ async function synthesizeModel(profile?: VoiceProfile): Promise<void> {
   stage.value = 'download'
   stageDetail.value = `${definition.name} · ${definition.sizeLabel}`
   const tts = await raceCancel(getTtsRuntime(modelId.value, info => {
+    if (cancelRequested) return
     if (info.stage === 'model') {
       stage.value = 'download'
       stagePercent.value = info.percent ?? stagePercent.value
@@ -394,10 +403,16 @@ async function synthesizeModel(profile?: VoiceProfile): Promise<void> {
   checkCancelled()
   stage.value = 'analyze'
   if (prosodyEngineId.value === 'local-llm') {
-    stageDetail.value = '本地小模型分析语气语速（浏览器内推理，文本不出本机）'
-    // 小模型首次下载复用 download 阶段的百分比条展示
+    // 已缓存时从 Cache Storage 直接读取，不进入下载阶段，也不显示百分比。
+    const cacheStatus = await getLocalLlmCacheStatus()
+    const useCached = cacheStatus.cached
+    stage.value = useCached ? 'analyze' : 'download'
+    stageDetail.value = useCached
+      ? '本地小模型已从缓存加载，无需重新下载'
+      : '本地小模型分析语气语速（首次约 470 MB，之后离线）'
     await raceCancel(getLocalLlm(info => {
-      if (info.stage === 'download') {
+      if (cancelRequested) return
+      if (info.stage === 'download' && !useCached) {
         stage.value = 'download'
         stagePercent.value = info.percent ?? stagePercent.value
         stageDetail.value = info.message
@@ -405,6 +420,7 @@ async function synthesizeModel(profile?: VoiceProfile): Promise<void> {
     }))
     stage.value = 'analyze'
     stageDetail.value = '本地小模型正在标注语气与语速'
+    void refreshLlmCacheStatus()
   } else if (prosodyEngineId.value === 'cloud') {
     stageDetail.value = '云端引擎分析语气与语速（文本将发送到所配置接口）'
   } else {
@@ -476,6 +492,7 @@ async function synthesizeModel(profile?: VoiceProfile): Promise<void> {
   emitSuccess(`已生成 ${audio.duration.toFixed(1)} 秒语音`)
   stage.value = 'done'
   note.value = `${definition.credit ? `请标注「${definition.credit}」；` : ''}模型「${definition.name}」在本机推理，首次使用会从公开镜像下载并缓存。`
+  void refreshLlmCacheStatus()
 }
 
 async function synthesize(): Promise<void> {
@@ -560,7 +577,7 @@ function download(): void {
         </select>
       </div>
       <p v-if="selectedProsodyEngine" class="dt-tts__hint">
-        {{ selectedProsodyEngine.description }}<template v-if="selectedProsodyEngine.needsNetwork">（⚠️ 使用时会外发文本）</template><template v-else-if="selectedProsodyEngine.sizeLabel">（📦 首次下载 {{ selectedProsodyEngine.sizeLabel }}，之后离线）</template>
+        {{ selectedProsodyEngine.description }}<template v-if="selectedProsodyEngine.needsNetwork">（⚠️ 使用时会外发文本）</template><template v-else-if="selectedProsodyEngine.sizeLabel">（{{ prosodyEngineId === 'local-llm' && llmCacheStatus?.cached ? '✅ 小模型已缓存，刷新不会重新下载' : '📦 首次下载 ' + selectedProsodyEngine.sizeLabel + '，之后离线' }}）</template>
       </p>
 
       <div v-if="prosodyEngineId === 'cloud'" class="dt-tts__cloud">

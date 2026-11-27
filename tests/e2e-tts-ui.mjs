@@ -212,6 +212,41 @@ try {
   record('local-llm 提示包含首次下载体积', llmHint.includes('470 MB'), llmHint.slice(0, 60))
   record('local-llm 不显示外发文本警示', !llmHint.includes('外发'), llmHint.slice(0, 60))
 
+  // 2a-2. 模拟缓存命中：刷新后提示应显示「已缓存，刷新不会重新下载」
+  await client.evaluate(`(async () => {
+    const cache = await caches.open('transformers-cache')
+    const base = 'https://hf-mirror.com/onnx-community/Qwen2.5-0.5B-Instruct/resolve/main/'
+    await cache.put(base + 'onnx/model_q4f16.onnx', new Response('fake-onnx'))
+    await cache.put(base + 'config.json', new Response('{}'))
+  })()`)
+  await client.evaluate(`location.reload()`)
+  await delay(600)
+  await waitFor(client, `document.querySelector('.dt-tts') !== null`, '刷新后 TTS 工具页加载', 15000)
+  await client.evaluate(`(() => {
+    const el = document.querySelector('#tts-prosody')
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set
+    setter.call(el, 'local-llm')
+    el.dispatchEvent(new Event('change', { bubbles: true }))
+  })()`)
+  await delay(250)
+  const cachedHint = await client.evaluate(`(() => {
+    const select = document.querySelector('#tts-prosody')
+    let node = select ? select.closest('.dt-tts__row')?.nextElementSibling : null
+    while (node && !node.classList?.contains('dt-tts__hint')) {
+      node = node.nextElementSibling
+    }
+    return node?.textContent || ''
+  })()`)
+  record('小模型已缓存时提示刷新不会重新下载', cachedHint.includes('小模型已缓存，刷新不会重新下载'), cachedHint.slice(-50))
+  // 清理模拟缓存，避免影响后续断言
+  await client.evaluate(`(async () => {
+    const cache = await caches.open('transformers-cache')
+    const keys = await cache.keys()
+    for (const key of keys) {
+      if (key.url.includes('Qwen2.5-0.5B-Instruct')) await cache.delete(key)
+    }
+  })()`)
+
   // 2b. cloud 切换：配置入口显隐 + 外发警示
   await client.evaluate(`(() => {
     const el = document.querySelector('#tts-prosody')

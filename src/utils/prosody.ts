@@ -173,6 +173,8 @@ export interface LocalLlmProgress {
 const LOCAL_LLM_MODEL_ID = 'onnx-community/Qwen2.5-0.5B-Instruct'
 /** 指定 q4f16 量化文件，避免默认拉 fp16（951 MB）。 */
 const LOCAL_LLM_DTYPE = 'q4f16'
+/** transformers.js 默认 Cache Storage 名称；沿用默认值以复用老缓存，避免升级后重下。 */
+const LOCAL_LLM_CACHE_NAME = 'transformers-cache'
 
 type TextGenerationPipeline = {
   (text: string, options?: {
@@ -192,6 +194,54 @@ export function disposeLocalLlm(): void {
   void pending?.then(pipeline => pipeline.dispose?.()).catch(() => {})
 }
 
+export interface LocalLlmCacheStatus {
+  /** 当前环境是否支持 Cache Storage。 */
+  available: boolean
+  /** 是否已缓存完整小模型（ONNX 权重 + 配套 JSON 元数据）。 */
+  cached: boolean
+  /** 命中缓存的模型文件字节数（按 content-length 累加）。 */
+  bytes: number
+  /** 命中的模型文件数。 */
+  files: number
+}
+
+/**
+ * 检查小模型是否已持久化到浏览器缓存。
+ * 沿用 transformers.js 默认缓存名，不另起 key；刷新页面只是重建内存中的管线，
+ * 这里返回 cached=true 时不会重新发起模型文件请求。
+ */
+export async function getLocalLlmCacheStatus(): Promise<LocalLlmCacheStatus> {
+  const empty: LocalLlmCacheStatus = { available: false, cached: false, bytes: 0, files: 0 }
+  if (typeof globalThis.caches === 'undefined') return empty
+  try {
+    const cache = await globalThis.caches.open(LOCAL_LLM_CACHE_NAME)
+    const keys = await cache.keys()
+    const modelKeys = keys.filter(request => request.url.includes(LOCAL_LLM_MODEL_ID))
+    let bytes = 0
+    for (const request of modelKeys) {
+      try {
+        const response = await cache.match(request)
+        const length = Number(response?.headers.get('content-length') ?? 0)
+        if (Number.isFinite(length) && length > 0) bytes += length
+      } catch {
+        // 单条缓存读取失败不影响整体判断
+      }
+    }
+    // transformers.js 只在文件完整下载后才写入缓存；同时存在 ONNX 权重与
+    // 配套 JSON 元数据即可判定为可复用缓存，不再按体积设阈值（避免误判）。
+    const hasOnnx = modelKeys.some(request => /\.onnx(?:$|\?)/i.test(request.url))
+    const hasMetadata = modelKeys.some(request => /\.json(?:$|\?)/i.test(request.url))
+    return {
+      available: true,
+      cached: hasOnnx && hasMetadata,
+      bytes,
+      files: modelKeys.length
+    }
+  } catch {
+    return empty
+  }
+}
+
 /**
  * 获取（并复用）本地小模型生成管线。
  * transformers.js 自带浏览器缓存（Cache Storage），进度按文件回调。
@@ -202,10 +252,18 @@ export function getLocalLlm(
 ): Promise<TextGenerationPipeline> {
   if (localLlmPipeline) return localLlmPipeline
   localLlmPipeline = (async () => {
-    onProgress?.({ stage: 'download', percent: 0, message: '正在下载本地小模型（首次约 470 MB，之后离线）' })
+    const cacheStatus = await getLocalLlmCacheStatus()
+    onProgress?.({
+      stage: 'download',
+      percent: cacheStatus.cached ? 100 : 0,
+      message: cacheStatus.cached
+        ? '本地小模型已在浏览器缓存中，直接复用（无需重新下载）'
+        : '正在下载本地小模型（首次约 470 MB，之后离线）'
+    })
     const { pipeline, env } = await import('@huggingface/transformers')
     // 与 TTS 模型同策略：优先镜像，失败回退官方源；推理优先 WebGPU，回退 WASM。
     env.allowLocalModels = false
+    env.useBrowserCache = true
     env.remoteHost = 'https://hf-mirror.com'
     env.remotePathTemplate = '{model}/resolve/{revision}/'
     // hf-mirror 对两类跨域请求会漏掉 CORS 响应头（官方源正常）：
@@ -257,7 +315,7 @@ export function getLocalLlm(
       dtype: LOCAL_LLM_DTYPE,
       progress_callback: (info: unknown) => {
         const event = info as { status?: string; name?: string; progress?: number; loaded?: number; total?: number }
-        if (event.status === 'progress' && event.name) {
+        if (event.status === 'progress' && event.name && !cacheStatus.cached) {
           progressByName.set(event.name, { loaded: event.loaded ?? 0, total: event.total ?? 0 })
           let loaded = 0
           let total = 0

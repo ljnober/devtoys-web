@@ -14,6 +14,7 @@ import {
   buildSsmlFromMarks,
   escapeXmlText,
   generateSsml,
+  getLocalLlmCacheStatus,
   getProsodyEngine,
   prosodyEngines,
   splitIntoClauses,
@@ -250,6 +251,14 @@ describe('prosody：智能韵律引擎', () => {
     assert.equal(getProsodyEngine('cloud')?.needsNetwork, true)
     assert.equal(getProsodyEngine('local-llm')?.sizeLabel, '470 MB')
     assert.equal(getProsodyEngine('不存在'), undefined)
+  })
+
+  test('getLocalLlmCacheStatus：无 Cache Storage 环境安全返回未缓存', async () => {
+    const status = await getLocalLlmCacheStatus()
+    assert.equal(typeof status.available, 'boolean')
+    assert.equal(status.cached, false)
+    assert.equal(status.bytes, 0)
+    assert.equal(status.files, 0)
   })
 
   test('escapeXmlText 转义 & < >，其余标点保留', () => {
