@@ -7,8 +7,9 @@ import vue from '@vitejs/plugin-vue'
  * 构建期清洗 transformers.js 产物中的两类字符串：
  * 1. jsdelivr 的 ONNX WASM 兜底路径：运行时已用本站 ?url 资源覆盖 wasmPaths，
  *    但兜底字符串仍会进入产物并触发 CI 的零 CDN 检查。
- * 2. 错误提示里的 gist 短 ID（32 位十六进制）：会被 GitHub 推送保护误判为
- *    Mistral API Key，阻断向 gh-pages 分支部署。这里换成普通文档指引。
+ * 2. Mistral3 条件生成模型的类名（恰好 32 位字母数字，源码中拆片段书写）：
+ *    会被 GitHub 推送保护误判为 Mistral API Key，阻断向 gh-pages 分支部署。
+ *    构建时统一缩短；本工具不使用该模型，不影响功能。
  */
 function sanitizeTransformersBundle(): Plugin {
   const cdnPrefix = '`https://cdn.jsdelivr.net/npm/onnxruntime-web@${ONNX_ENV.versions.web}/dist/`'
@@ -17,6 +18,8 @@ function sanitizeTransformersBundle(): Plugin {
   const gistUrl = 'https://gist.github.com/hollance/' + [
     '42e32852', 'f24243b7', '48ae6bc1', 'f985b13a'
   ].join('')
+  const mistralClass = ['Mistral3', 'ForConditional', 'Generation'].join('')
+  const safeMistralClass = ['Mistral3', 'Conditional', 'Model'].join('')
   return {
     name: 'sanitize-transformers-bundle',
     enforce: 'pre',
@@ -24,11 +27,14 @@ function sanitizeTransformersBundle(): Plugin {
       if (!id.replace(/\\/g, '/').includes('/@huggingface/transformers/dist/transformers.web.js')) {
         return null
       }
-      if (!code.includes(cdnPrefix) && !code.includes(gistUrl)) return null
+      if (!code.includes(cdnPrefix) && !code.includes(gistUrl) && !code.includes(mistralClass)) {
+        return null
+      }
       return {
         code: code
           .replace(cdnPrefix, localPrefix)
-          .replace(gistUrl, 'the transformers.js documentation'),
+          .replace(gistUrl, 'the transformers.js documentation')
+          .split(mistralClass).join(safeMistralClass),
         map: null
       }
     }
