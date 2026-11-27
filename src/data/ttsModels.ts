@@ -7,6 +7,8 @@ export interface TtsModelDefinition {
   repoId: string
   onnxFile: string
   revision?: string
+  /** 模型文件 SHA-256；缺失时跳过校验（上游未提供固定摘要）。 */
+  sha256?: string
   supportsCloning: boolean
   credit?: string
   sizeLabel: string
@@ -22,6 +24,7 @@ export const ttsModels: TtsModelDefinition[] = [
     repoId: 'ayousanz/piper-plus-base',
     onnxFile: 'releases/zs-v1/base.onnx',
     revision: ZS_V1_REVISION,
+    sha256: 'e9860701a941db02149c7cfbe19cfb578c235c5e25020f1f592131d9b3b30f84',
     supportsCloning: true,
     sizeLabel: '40.8 MB'
   },

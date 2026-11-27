@@ -391,7 +391,7 @@ async function synthesizeModel(profile?: VoiceProfile): Promise<void> {
       stage.value = 'download'
       stagePercent.value = info.percent ?? stagePercent.value
       stageDetail.value = info.message
-    } else if (info.stage === 'phonemizer') {
+    } else if (info.stage === 'engine' || info.stage === 'phonemizer') {
       stage.value = 'engine'
       stageDetail.value = info.message
     }

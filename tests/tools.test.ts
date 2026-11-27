@@ -231,6 +231,7 @@ describe('ttsModels：语音模型配置', () => {
   })
 
   test('getTtsModel 按 id 返回模型，未知 id 返回 undefined', () => {
+    assert.equal(getTtsModel('zs-v1')?.sha256, 'e9860701a941db02149c7cfbe19cfb578c235c5e25020f1f592131d9b3b30f84')
     assert.equal(getTtsModel('zs-v1')?.supportsCloning, true)
     assert.equal(getTtsModel('css10')?.supportsCloning, false)
     assert.equal(getTtsModel('不存在'), undefined)
