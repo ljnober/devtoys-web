@@ -102,6 +102,12 @@ async function wasmLoader(): Promise<unknown> {
   // piper-plus 未为该子路径提供 .d.ts，运行时由 Vite 静态打包。
   // @ts-ignore missing declaration for wasm entry
   const module = await import('piper-plus/wasm/multilingual') as any
+  // 传入 wasmLoader 后 piper-plus 不再自行初始化；wasm-bindgen 绑定必须先
+  // 跑完 default()（加载 piper_plus_wasm_bg.wasm），WasmPhonemizer 构造时才
+  // 能拿到 __wbindgen_malloc，否则中文/日语会被静默排除出合成。
+  if (typeof module.default === 'function') {
+    await module.default()
+  }
   const Base = module.WasmPhonemizer as new (config: string) => {
     setChineseDictionary?: (single: Uint8Array, phrases: Uint8Array) => void
   }
